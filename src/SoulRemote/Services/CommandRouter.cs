@@ -5,12 +5,18 @@ using SoulRemote.Models;
 namespace SoulRemote.Services;
 
 /// <summary>
-/// Interprets incoming Telegram updates and executes the matching system action,
-/// enforcing the authorized-chat whitelist and the pairing bootstrap.
+/// Turns Telegram updates into actions on this machine.
+///
+/// The bot is button-driven: a tap on an inline keyboard edits the panel message
+/// into the next screen and reports the result as a toast, so the chat does not
+/// fill up with replies. Values that cannot be expressed as a button (a volume
+/// level, a process name) are collected with a one-shot prompt. Typed commands
+/// still work for anyone who prefers them.
 /// </summary>
 public sealed class CommandRouter
 {
     private const int ShutdownDelaySeconds = 15;
+    private const int MaxPairAttempts = 5;
 
     private readonly ISettingsService _settings;
     private readonly ITelegramClient _telegram;
@@ -18,12 +24,13 @@ public sealed class CommandRouter
     private readonly IScreenshotService _screenshot;
     private readonly ISystemInfoService _info;
     private readonly ILogService _log;
+    private readonly ChatPrompts _prompts = new();
 
-    private const int MaxPairAttempts = 5;
     private string _pairingCode = string.Empty;
     private int _failedPairAttempts;
+    private int _commandsHandled;
 
-    /// <summary>One-time pairing code shown in the desktop app UI. Setting it resets the lockout.</summary>
+    /// <summary>One-time pairing code shown in the desktop app. Setting it clears the lockout.</summary>
     public string PairingCode
     {
         get => _pairingCode;
@@ -37,13 +44,10 @@ public sealed class CommandRouter
     /// <summary>Raised (on a background thread) when a new chat is authorized via pairing.</summary>
     public event Action<long>? ChatAuthorized;
 
-    /// <summary>Raised (on a background thread) after each accepted command, with its name.</summary>
+    /// <summary>Raised (on a background thread) after each accepted action, with its name.</summary>
     public event Action<string>? CommandHandled;
 
-    /// <summary>Total commands executed since the app started; shown as telemetry.</summary>
     public int CommandsHandled => _commandsHandled;
-
-    private int _commandsHandled;
 
     public CommandRouter(
         ISettingsService settings, ITelegramClient telegram, ISystemControlService system,
@@ -62,7 +66,7 @@ public sealed class CommandRouter
         try
         {
             if (update.CallbackQuery is { } cb)
-                await HandleCallbackAsync(cb, ct).ConfigureAwait(false);
+                await HandleTapAsync(cb, ct).ConfigureAwait(false);
             else if (update.Message?.Text is { Length: > 0 })
                 await HandleTextAsync(update.Message, ct).ConfigureAwait(false);
         }
@@ -73,237 +77,426 @@ public sealed class CommandRouter
         }
     }
 
-    // ---- text commands ----
+    // ============================================================
+    // Button taps
+    // ============================================================
+
+    private async Task HandleTapAsync(TgCallbackQuery cb, CancellationToken ct)
+    {
+        var chatId = cb.Message?.Chat?.Id ?? cb.From?.Id ?? 0;
+        var messageId = cb.Message?.MessageId ?? 0;
+        var data = cb.Data ?? string.Empty;
+
+        if (chatId == 0 || !IsAuthorized(chatId))
+        {
+            await _telegram.AnswerCallbackAsync(cb.Id, "Not authorized", true, ct).ConfigureAwait(false);
+            return;
+        }
+
+        Count(data);
+        _log.Info($"Tap '{data}' from chat {chatId}.");
+
+        var (kind, value) = Split(data);
+        switch (kind)
+        {
+            case "m":
+                await ShowScreenAsync(chatId, messageId, value, ct).ConfigureAwait(false);
+                await _telegram.AnswerCallbackAsync(cb.Id, null, false, ct).ConfigureAwait(false);
+                break;
+
+            case "c":
+                var (action, question) = ConfirmationFor(value);
+                var confirm = BotMenu.Confirm(value, question);
+                await _telegram.EditMessageAsync(chatId, messageId, confirm.Text, confirm.Keyboard, ct).ConfigureAwait(false);
+                await _telegram.AnswerCallbackAsync(cb.Id, action, false, ct).ConfigureAwait(false);
+                break;
+
+            case "y":
+                await RunConfirmedAsync(cb.Id, chatId, messageId, value, ct).ConfigureAwait(false);
+                break;
+
+            case "i":
+                await AskForValueAsync(cb.Id, chatId, value, ct).ConfigureAwait(false);
+                break;
+
+            case "x":
+                _prompts.Clear(chatId);
+                await _telegram.AnswerCallbackAsync(cb.Id, "Cancelled", false, ct).ConfigureAwait(false);
+                await ShowScreenAsync(chatId, 0, "home", ct).ConfigureAwait(false);
+                break;
+
+            case "a":
+                await RunActionAsync(cb.Id, chatId, value, ct).ConfigureAwait(false);
+                break;
+
+            default:
+                await _telegram.AnswerCallbackAsync(cb.Id, null, false, ct).ConfigureAwait(false);
+                break;
+        }
+    }
+
+    /// <summary>Renders a screen in place when possible, otherwise as a new panel.</summary>
+    private async Task ShowScreenAsync(long chatId, long messageId, string screen, CancellationToken ct)
+    {
+        var view = ScreenFor(screen);
+        if (messageId > 0)
+        {
+            await _telegram.EditMessageAsync(chatId, messageId, view.Text, view.Keyboard, ct).ConfigureAwait(false);
+            return;
+        }
+        await _telegram.SendMessageAsync(chatId, view.Text, view.Keyboard, ct).ConfigureAwait(false);
+    }
+
+    private BotMenu.Screen ScreenFor(string screen) => screen switch
+    {
+        "cap" => BotMenu.Capture(SafeScreenCount()),
+        "pwr" => BotMenu.Power(),
+        "aud" => BotMenu.Audio(),
+        "inp" => BotMenu.Input(),
+        "sys" => BotMenu.System(),
+        "prc" => BotMenu.Processes(_settings.Current.AllowShellCommands),
+        _ => BotMenu.Home(Environment.MachineName),
+    };
+
+    private int SafeScreenCount()
+    {
+        try { return _screenshot.ScreenCount; }
+        catch { return 1; }
+    }
+
+    private static (string toast, string question) ConfirmationFor(string action) => action switch
+    {
+        "sd" => ("Confirm shut down", "Shut down this PC?"),
+        "rs" => ("Confirm restart", "Restart this PC?"),
+        "lo" => ("Confirm sign out", "Sign out of this PC?"),
+        "hb" => ("Confirm hibernate", "Hibernate this PC?"),
+        _ => ("Confirm", "Are you sure?"),
+    };
+
+    private async Task RunConfirmedAsync(string callbackId, long chatId, long messageId, string action, CancellationToken ct)
+    {
+        try
+        {
+            string result;
+            switch (action)
+            {
+                case "sd": result = await _system.ShutdownAsync(ShutdownDelaySeconds).ConfigureAwait(false); break;
+                case "rs": result = await _system.RestartAsync(ShutdownDelaySeconds).ConfigureAwait(false); break;
+                case "lo": result = await _system.LogoffAsync().ConfigureAwait(false); break;
+                case "hb": result = _system.Hibernate(); break;
+                default: result = "Nothing to do."; break;
+            }
+            await _telegram.AnswerCallbackAsync(callbackId, result, true, ct).ConfigureAwait(false);
+            await _telegram.EditMessageAsync(chatId, messageId,
+                $"✅ {TextUtil.Html(result)}", BotMenu.Power().Keyboard, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            await _telegram.AnswerCallbackAsync(callbackId, ex.Message, true, ct).ConfigureAwait(false);
+        }
+    }
+
+    private async Task AskForValueAsync(string callbackId, long chatId, string value, CancellationToken ct)
+    {
+        var kind = value switch
+        {
+            "vol" => PromptKind.Volume,
+            "kill" => PromptKind.KillProcess,
+            "clip" => PromptKind.Clipboard,
+            "type" => PromptKind.TypeText,
+            "say" => PromptKind.Speak,
+            "open" => PromptKind.OpenLink,
+            "cmd" => PromptKind.ShellCommand,
+            _ => PromptKind.None,
+        };
+        if (kind == PromptKind.None)
+        {
+            await _telegram.AnswerCallbackAsync(callbackId, null, false, ct).ConfigureAwait(false);
+            return;
+        }
+        if (kind == PromptKind.ShellCommand && !_settings.Current.AllowShellCommands)
+        {
+            await _telegram.AnswerCallbackAsync(callbackId,
+                "Shell commands are switched off in the desktop app.", true, ct).ConfigureAwait(false);
+            return;
+        }
+
+        _prompts.Ask(chatId, kind);
+        await _telegram.AnswerCallbackAsync(callbackId, null, false, ct).ConfigureAwait(false);
+        await _telegram.SendWithMarkupAsync(chatId, ChatPrompts.PromptFor(kind),
+            new TgForceReply { Placeholder = ChatPrompts.PlaceholderFor(kind), Selective = true }, ct)
+            .ConfigureAwait(false);
+    }
+
+    private async Task RunActionAsync(string callbackId, long chatId, string value, CancellationToken ct)
+    {
+        // Captures and reports arrive as their own message; everything else is a toast.
+        switch (value)
+        {
+            case "ss":
+                await _telegram.AnswerCallbackAsync(callbackId, "Capturing…", false, ct).ConfigureAwait(false);
+                await SendScreenshotAsync(chatId, null, ct).ConfigureAwait(false);
+                return;
+            case "sys":
+                await _telegram.AnswerCallbackAsync(callbackId, null, false, ct).ConfigureAwait(false);
+                await SendReportAsync(chatId, () => _info.GetSystemInfoAsync(ct), ct).ConfigureAwait(false);
+                return;
+            case "disk":
+                await _telegram.AnswerCallbackAsync(callbackId, null, false, ct).ConfigureAwait(false);
+                await SendTextAsync(chatId, _info.GetDisks(), ct).ConfigureAwait(false);
+                return;
+            case "bat":
+                await _telegram.AnswerCallbackAsync(callbackId, null, false, ct).ConfigureAwait(false);
+                await SendTextAsync(chatId, _info.GetBattery(), ct).ConfigureAwait(false);
+                return;
+            case "net":
+                await _telegram.AnswerCallbackAsync(callbackId, null, false, ct).ConfigureAwait(false);
+                await SendReportAsync(chatId, () => _info.GetNetworkAsync(ct), ct).ConfigureAwait(false);
+                return;
+            case "ps":
+                await _telegram.AnswerCallbackAsync(callbackId, null, false, ct).ConfigureAwait(false);
+                await SendTextAsync(chatId, _info.GetTopProcesses(), ct).ConfigureAwait(false);
+                return;
+            case "clip":
+                await _telegram.AnswerCallbackAsync(callbackId, null, false, ct).ConfigureAwait(false);
+                await SendClipboardAsync(chatId, ct).ConfigureAwait(false);
+                return;
+        }
+
+        if (value.StartsWith("ss", StringComparison.Ordinal) && int.TryParse(value[2..], out var index))
+        {
+            await _telegram.AnswerCallbackAsync(callbackId, "Capturing…", false, ct).ConfigureAwait(false);
+            await SendScreenshotAsync(chatId, index.ToString(), ct).ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            string result;
+            switch (value)
+            {
+                case "lock": result = _system.Lock(); break;
+                case "sleep": result = _system.Sleep(); break;
+                case "mon": result = _system.MonitorOff(); break;
+                case "vup": result = _system.VolumeUp(); break;
+                case "vdn": result = _system.VolumeDown(); break;
+                case "mute": result = _system.ToggleMute(); break;
+                case "play": result = _system.MediaPlayPause(); break;
+                case "next": result = _system.MediaNext(); break;
+                case "prev": result = _system.MediaPrevious(); break;
+                case "abort": result = await _system.CancelPendingAsync().ConfigureAwait(false); break;
+                default: result = "Nothing to do."; break;
+            }
+            await _telegram.AnswerCallbackAsync(callbackId, result, false, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            await _telegram.AnswerCallbackAsync(callbackId, ex.Message, true, ct).ConfigureAwait(false);
+        }
+    }
+
+    // ============================================================
+    // Text messages
+    // ============================================================
 
     private async Task HandleTextAsync(TgMessage msg, CancellationToken ct)
     {
         var chatId = msg.Chat?.Id ?? 0;
-        if (chatId == 0) return;
+        if (chatId == 0)
+            return;
 
         var raw = msg.Text!.Trim();
         var (cmd, arg) = ParseCommand(raw);
 
-        // Pairing / bootstrap handling before the auth gate.
-        if (cmd is "pair" or "start" && !IsAuthorized(chatId))
+        if (!IsAuthorized(chatId))
         {
             await HandleUnauthorizedAsync(chatId, cmd, arg, ct).ConfigureAwait(false);
             return;
         }
 
-        if (!IsAuthorized(chatId))
+        // A pending prompt claims the next plain message.
+        if (!raw.StartsWith('/') && _prompts.HasPending(chatId))
         {
-            _log.Warning($"Rejected command '{cmd}' from unauthorized chat {chatId}.");
-            await _telegram.SendMessageAsync(chatId,
-                "⛔ You are not authorized. Send <code>/pair &lt;code&gt;</code> with the code shown in the Soul Remote app.", null, ct)
-                .ConfigureAwait(false);
+            var kind = _prompts.Take(chatId);
+            if (kind != PromptKind.None)
+            {
+                await FulfilPromptAsync(chatId, kind, raw, ct).ConfigureAwait(false);
+                return;
+            }
+        }
+
+        // Shortcut bar taps arrive as ordinary text.
+        switch (raw)
+        {
+            case BotMenu.BarMenu:
+                await ShowScreenAsync(chatId, 0, "home", ct).ConfigureAwait(false);
+                return;
+            case BotMenu.BarShot:
+                Count("shortcut:screenshot");
+                await SendScreenshotAsync(chatId, null, ct).ConfigureAwait(false);
+                return;
+            case BotMenu.BarLock:
+                Count("shortcut:lock");
+                await SendResultAsync(chatId, () => _system.Lock(), ct).ConfigureAwait(false);
+                return;
+            case BotMenu.BarPower:
+                await ShowScreenAsync(chatId, 0, "pwr", ct).ConfigureAwait(false);
+                return;
+            case BotMenu.BarStatus:
+                Count("shortcut:status");
+                await SendReportAsync(chatId, () => _info.GetSystemInfoAsync(ct), ct).ConfigureAwait(false);
+                return;
+        }
+
+        if (!raw.StartsWith('/'))
+        {
+            // Anything else opens the panel rather than being ignored.
+            await ShowScreenAsync(chatId, 0, "home", ct).ConfigureAwait(false);
             return;
         }
 
+        Count("/" + cmd);
         _log.Info($"Command '{cmd}' from chat {chatId}.");
-        Interlocked.Increment(ref _commandsHandled);
-        CommandHandled?.Invoke("/" + cmd);
+        await RunTypedCommandAsync(chatId, cmd, arg, ct).ConfigureAwait(false);
+    }
 
+    private async Task FulfilPromptAsync(long chatId, PromptKind kind, string input, CancellationToken ct)
+    {
+        Count("prompt:" + kind);
+        switch (kind)
+        {
+            case PromptKind.Volume:
+                if (int.TryParse(input.Trim(), out var level))
+                    await SendResultAsync(chatId, () => _system.SetVolume(level), ct).ConfigureAwait(false);
+                else
+                    await SendTextAsync(chatId, "That is not a number between 0 and 100.", ct).ConfigureAwait(false);
+                return;
+            case PromptKind.KillProcess:
+                await SendResultAsync(chatId, () => _system.KillProcess(input), ct).ConfigureAwait(false);
+                return;
+            case PromptKind.Clipboard:
+                await SendResultAsync(chatId, () => _system.SetClipboardText(input), ct).ConfigureAwait(false);
+                return;
+            case PromptKind.TypeText:
+                await SendResultAsync(chatId, () => _system.TypeText(input), ct).ConfigureAwait(false);
+                return;
+            case PromptKind.OpenLink:
+                await SendResultAsync(chatId, () => _system.OpenTarget(input), ct).ConfigureAwait(false);
+                return;
+            case PromptKind.Speak:
+                await SendAsyncResultAsync(chatId, () => _system.SpeakAsync(input, ct), ct).ConfigureAwait(false);
+                return;
+            case PromptKind.ShellCommand:
+                await RunShellAsync(chatId, input, ct).ConfigureAwait(false);
+                return;
+        }
+    }
+
+    private async Task RunTypedCommandAsync(long chatId, string cmd, string? arg, CancellationToken ct)
+    {
         switch (cmd)
         {
             case "start":
+                await SendWelcomeAsync(chatId, ct).ConfigureAwait(false);
+                break;
             case "menu":
             case "help":
-                await SendMainMenuAsync(chatId, WelcomeText(), ct);
+                await ShowScreenAsync(chatId, 0, "home", ct).ConfigureAwait(false);
                 break;
             case "screenshot":
             case "ss":
-                await SendScreenshotAsync(chatId, arg, ct);
+                await SendScreenshotAsync(chatId, arg, ct).ConfigureAwait(false);
                 break;
             case "sysinfo":
             case "info":
-                await RunTextAsync(chatId, () => _info.GetSystemInfoAsync(ct), ct);
+                await SendReportAsync(chatId, () => _info.GetSystemInfoAsync(ct), ct).ConfigureAwait(false);
                 break;
             case "disks":
-                await ReplyAsync(chatId, _info.GetDisks(), ct);
+                await SendTextAsync(chatId, _info.GetDisks(), ct).ConfigureAwait(false);
                 break;
             case "battery":
-                await ReplyAsync(chatId, _info.GetBattery(), ct);
+                await SendTextAsync(chatId, _info.GetBattery(), ct).ConfigureAwait(false);
                 break;
             case "processes":
             case "ps":
-                await ReplyAsync(chatId, _info.GetTopProcesses(), ct);
+                await SendTextAsync(chatId, _info.GetTopProcesses(), ct).ConfigureAwait(false);
                 break;
             case "network":
             case "net":
-                await RunTextAsync(chatId, () => _info.GetNetworkAsync(ct), ct);
+                await SendReportAsync(chatId, () => _info.GetNetworkAsync(ct), ct).ConfigureAwait(false);
                 break;
             case "lock":
-                await SafeRunAsync(chatId, () => _system.Lock(), ct);
+                await SendResultAsync(chatId, () => _system.Lock(), ct).ConfigureAwait(false);
                 break;
             case "sleep":
-                await SafeRunAsync(chatId, () => _system.Sleep(), ct);
-                break;
-            case "hibernate":
-                await ConfirmAsync(chatId, "hibernate", "💤 Hibernate this machine?", ct);
-                break;
-            case "monitoroff":
-                await SafeRunAsync(chatId, () => _system.MonitorOff(), ct);
-                break;
-            case "shutdown":
-                await ConfirmAsync(chatId, "shutdown", "⏻ Shut down this machine?", ct);
-                break;
-            case "restart":
-            case "reboot":
-                await ConfirmAsync(chatId, "restart", "🔄 Restart this machine?", ct);
-                break;
-            case "logoff":
-                await ConfirmAsync(chatId, "logoff", "🚪 Log off the current user?", ct);
+                await SendResultAsync(chatId, () => _system.Sleep(), ct).ConfigureAwait(false);
                 break;
             case "cancel":
-                await SafeRunAsyncTask(chatId, () => _system.CancelPendingAsync(), ct);
+                await SendAsyncResultAsync(chatId, () => _system.CancelPendingAsync(), ct).ConfigureAwait(false);
                 break;
             case "volume":
             case "vol":
-                await HandleVolumeAsync(chatId, arg, ct);
-                break;
-            case "volup":
-                await SafeRunAsync(chatId, () => _system.VolumeUp(), ct);
-                break;
-            case "voldown":
-                await SafeRunAsync(chatId, () => _system.VolumeDown(), ct);
+                if (int.TryParse(arg, out var pct))
+                    await SendResultAsync(chatId, () => _system.SetVolume(pct), ct).ConfigureAwait(false);
+                else
+                    await ShowScreenAsync(chatId, 0, "aud", ct).ConfigureAwait(false);
                 break;
             case "mute":
-                await SafeRunAsync(chatId, () => _system.ToggleMute(), ct);
-                break;
-            case "play":
-                await SafeRunAsync(chatId, () => _system.MediaPlayPause(), ct);
-                break;
-            case "next":
-                await SafeRunAsync(chatId, () => _system.MediaNext(), ct);
-                break;
-            case "prev":
-                await SafeRunAsync(chatId, () => _system.MediaPrevious(), ct);
+                await SendResultAsync(chatId, () => _system.ToggleMute(), ct).ConfigureAwait(false);
                 break;
             case "kill":
-                await HandleKillAsync(chatId, arg, ct);
-                break;
-            case "cmd":
-                await HandleCmdAsync(chatId, arg, ct);
+                if (string.IsNullOrWhiteSpace(arg))
+                    await ShowScreenAsync(chatId, 0, "prc", ct).ConfigureAwait(false);
+                else
+                    await SendResultAsync(chatId, () => _system.KillProcess(arg!), ct).ConfigureAwait(false);
                 break;
             case "clipboard":
+                await SendClipboardAsync(chatId, ct).ConfigureAwait(false);
+                break;
             case "clip":
-                if (string.IsNullOrWhiteSpace(arg))
-                    await ReplyAsync(chatId, TextUtil.Pre(_system.GetClipboardText()), ct);
-                else
-                    await SafeRunAsync(chatId, () => _system.SetClipboardText(arg!), ct);
+                if (!string.IsNullOrWhiteSpace(arg))
+                    await SendResultAsync(chatId, () => _system.SetClipboardText(arg!), ct).ConfigureAwait(false);
                 break;
             case "open":
-                if (string.IsNullOrWhiteSpace(arg))
-                    await ReplyAsync(chatId, "Usage: <code>/open &lt;url or path&gt;</code>", ct);
-                else
-                    await SafeRunAsync(chatId, () => _system.OpenTarget(arg!), ct);
+                if (!string.IsNullOrWhiteSpace(arg))
+                    await SendResultAsync(chatId, () => _system.OpenTarget(arg!), ct).ConfigureAwait(false);
                 break;
             case "type":
-                if (string.IsNullOrWhiteSpace(arg))
-                    await ReplyAsync(chatId, "Usage: <code>/type &lt;text&gt;</code>", ct);
-                else
-                    await SafeRunAsync(chatId, () => _system.TypeText(arg!), ct);
+                if (!string.IsNullOrWhiteSpace(arg))
+                    await SendResultAsync(chatId, () => _system.TypeText(arg!), ct).ConfigureAwait(false);
                 break;
             case "say":
-                if (string.IsNullOrWhiteSpace(arg))
-                    await ReplyAsync(chatId, "Usage: <code>/say &lt;text&gt;</code>", ct);
-                else
-                    await SafeRunAsyncTask(chatId, () => _system.SpeakAsync(arg!, ct), ct);
+                if (!string.IsNullOrWhiteSpace(arg))
+                    await SendAsyncResultAsync(chatId, () => _system.SpeakAsync(arg!, ct), ct).ConfigureAwait(false);
                 break;
-            case "screens":
-                await ReplyAsync(chatId, $"This PC has <b>{_screenshot.ScreenCount}</b> display(s). Use <code>/screenshot 0</code> to capture one.", ct);
+            case "cmd":
+                if (!string.IsNullOrWhiteSpace(arg))
+                    await RunShellAsync(chatId, arg!, ct).ConfigureAwait(false);
                 break;
             case "whoami":
-                await ReplyAsync(chatId, $"Your chat ID: <code>{chatId}</code>", ct);
+                await SendTextAsync(chatId, $"Your chat ID: <code>{chatId}</code>", ct).ConfigureAwait(false);
                 break;
             case "ping":
-                await ReplyAsync(chatId, "🏓 pong", ct);
+                await SendTextAsync(chatId, "🏓 pong", ct).ConfigureAwait(false);
                 break;
             default:
-                await ReplyAsync(chatId, "Unknown command. Send /help for the menu.", ct);
+                await ShowScreenAsync(chatId, 0, "home", ct).ConfigureAwait(false);
                 break;
         }
     }
 
-    // ---- callbacks (inline buttons) ----
+    // ============================================================
+    // Actions that produce output
+    // ============================================================
 
-    private async Task HandleCallbackAsync(TgCallbackQuery cb, CancellationToken ct)
+    private async Task SendWelcomeAsync(long chatId, CancellationToken ct)
     {
-        var chatId = cb.Message?.Chat?.Id ?? cb.From?.Id ?? 0;
-        var data = cb.Data ?? string.Empty;
-
-        if (chatId == 0 || !IsAuthorized(chatId))
-        {
-            await _telegram.AnswerCallbackAsync(cb.Id, "Not authorized", ct);
-            return;
-        }
-
-        await _telegram.AnswerCallbackAsync(cb.Id, null, ct);
-        _log.Info($"Callback '{data}' from chat {chatId}.");
-        Interlocked.Increment(ref _commandsHandled);
-        CommandHandled?.Invoke(data);
-
-        var (kind, value) = ParseCallback(data);
-        switch (kind)
-        {
-            case "m" when value == "main":
-                await SendMainMenuAsync(chatId, "Main menu:", ct);
-                break;
-            case "m" when value == "power":
-                await SendPowerMenuAsync(chatId, ct);
-                break;
-            case "a":
-                await DispatchActionAsync(chatId, value, ct);
-                break;
-            case "y": // confirmed destructive action
-                await DispatchConfirmedAsync(chatId, value, ct);
-                break;
-            default:
-                break;
-        }
+        await _telegram.SendWithMarkupAsync(chatId,
+            $"👋 Connected to <b>{TextUtil.Html(Environment.MachineName)}</b>.\n" +
+            "Use the buttons below — no commands to remember.",
+            BotMenu.ShortcutBar(), ct).ConfigureAwait(false);
+        await ShowScreenAsync(chatId, 0, "home", ct).ConfigureAwait(false);
     }
-
-    private async Task DispatchActionAsync(long chatId, string value, CancellationToken ct)
-    {
-        switch (value)
-        {
-            case "screenshot": await SendScreenshotAsync(chatId, null, ct); break;
-            case "sysinfo": await RunTextAsync(chatId, () => _info.GetSystemInfoAsync(ct), ct); break;
-            case "disks": await ReplyAsync(chatId, _info.GetDisks(), ct); break;
-            case "battery": await ReplyAsync(chatId, _info.GetBattery(), ct); break;
-            case "proc": await ReplyAsync(chatId, _info.GetTopProcesses(), ct); break;
-            case "net": await RunTextAsync(chatId, () => _info.GetNetworkAsync(ct), ct); break;
-            case "lock": await SafeRunAsync(chatId, () => _system.Lock(), ct); break;
-            case "sleep": await SafeRunAsync(chatId, () => _system.Sleep(), ct); break;
-            case "monoff": await SafeRunAsync(chatId, () => _system.MonitorOff(), ct); break;
-            case "volup": await SafeRunAsync(chatId, () => _system.VolumeUp(), ct); break;
-            case "voldown": await SafeRunAsync(chatId, () => _system.VolumeDown(), ct); break;
-            case "mute": await SafeRunAsync(chatId, () => _system.ToggleMute(), ct); break;
-            case "play": await SafeRunAsync(chatId, () => _system.MediaPlayPause(), ct); break;
-            case "next": await SafeRunAsync(chatId, () => _system.MediaNext(), ct); break;
-            case "prev": await SafeRunAsync(chatId, () => _system.MediaPrevious(), ct); break;
-            case "cancelpending": await SafeRunAsyncTask(chatId, () => _system.CancelPendingAsync(), ct); break;
-            case "shutdown": await ConfirmAsync(chatId, "shutdown", "⏻ Shut down this machine?", ct); break;
-            case "restart": await ConfirmAsync(chatId, "restart", "🔄 Restart this machine?", ct); break;
-            case "logoff": await ConfirmAsync(chatId, "logoff", "🚪 Log off the current user?", ct); break;
-            case "hibernate": await ConfirmAsync(chatId, "hibernate", "💤 Hibernate this machine?", ct); break;
-            default: break;
-        }
-    }
-
-    private async Task DispatchConfirmedAsync(long chatId, string value, CancellationToken ct)
-    {
-        switch (value)
-        {
-            case "shutdown": await SafeRunAsyncTask(chatId, () => _system.ShutdownAsync(ShutdownDelaySeconds), ct); break;
-            case "restart": await SafeRunAsyncTask(chatId, () => _system.RestartAsync(ShutdownDelaySeconds), ct); break;
-            case "logoff": await SafeRunAsyncTask(chatId, () => _system.LogoffAsync(), ct); break;
-            case "hibernate": await SafeRunAsync(chatId, () => _system.Hibernate(), ct); break;
-            default: break;
-        }
-    }
-
-    // ---- action helpers ----
 
     private async Task SendScreenshotAsync(long chatId, string? arg, CancellationToken ct)
     {
@@ -314,7 +507,7 @@ public sealed class CommandRouter
             if (int.TryParse(arg, out var index))
             {
                 png = _screenshot.CaptureScreen(index);
-                caption = $"🖼 Screen {index} — {DateTime.Now:HH:mm:ss}";
+                caption = $"🖼 Monitor {index + 1} — {DateTime.Now:HH:mm:ss}";
             }
             else
             {
@@ -326,195 +519,118 @@ public sealed class CommandRouter
         }
         catch (Exception ex)
         {
-            await ReplyAsync(chatId, $"❌ Screenshot failed: {TextUtil.Html(ex.Message)}", ct);
+            await SendTextAsync(chatId, $"❌ Screenshot failed: {TextUtil.Html(ex.Message)}", ct).ConfigureAwait(false);
         }
     }
 
-    private async Task HandleVolumeAsync(long chatId, string? arg, CancellationToken ct)
+    private async Task SendClipboardAsync(long chatId, CancellationToken ct)
     {
-        if (int.TryParse(arg, out var percent))
-            await SafeRunAsync(chatId, () => _system.SetVolume(percent), ct);
-        else
-            await ReplyAsync(chatId, "Usage: <code>/volume 0-100</code>", ct);
-    }
-
-    private async Task HandleKillAsync(long chatId, string? arg, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(arg))
+        try
         {
-            await ReplyAsync(chatId, "Usage: <code>/kill &lt;name|pid&gt;</code>", ct);
-            return;
+            var text = _system.GetClipboardText();
+            var body = TextUtil.Pre(text);
+            if (body.Length <= 3500)
+                await _telegram.SendMessageAsync(chatId, body, null, ct).ConfigureAwait(false);
+            else
+                await _telegram.SendDocumentAsync(chatId, Encoding.UTF8.GetBytes(text),
+                    $"clipboard_{DateTime.Now:yyyyMMdd_HHmmss}.txt", "Clipboard", ct).ConfigureAwait(false);
         }
-        await SafeRunAsync(chatId, () => _system.KillProcess(arg!), ct);
+        catch (Exception ex)
+        {
+            await SendTextAsync(chatId, $"❌ {TextUtil.Html(ex.Message)}", ct).ConfigureAwait(false);
+        }
     }
 
-    private async Task HandleCmdAsync(long chatId, string? arg, CancellationToken ct)
+    private async Task RunShellAsync(long chatId, string command, CancellationToken ct)
     {
         if (!_settings.Current.AllowShellCommands)
         {
-            await ReplyAsync(chatId, "🔒 Shell commands are disabled. Enable them in the Soul Remote app settings.", ct);
-            return;
-        }
-        if (string.IsNullOrWhiteSpace(arg))
-        {
-            await ReplyAsync(chatId, "Usage: <code>/cmd &lt;command&gt;</code>", ct);
+            await SendTextAsync(chatId, "🔒 Shell commands are switched off in the desktop app.", ct).ConfigureAwait(false);
             return;
         }
         try
         {
-            var output = await _system.RunShellCommandAsync(arg!, ct).ConfigureAwait(false);
-            var pre = TextUtil.Pre(output);
-            // HTML escaping can multiply the length; if the single <pre> block would exceed
-            // Telegram's message limit (and risk being split mid-tag), send it as a text file.
-            if (pre.Length <= 3500)
-            {
-                await _telegram.SendMessageAsync(chatId, pre, null, ct).ConfigureAwait(false);
-            }
+            var output = await _system.RunShellCommandAsync(command, ct).ConfigureAwait(false);
+            var body = TextUtil.Pre(output);
+            if (body.Length <= 3500)
+                await _telegram.SendMessageAsync(chatId, body, null, ct).ConfigureAwait(false);
             else
-            {
-                var bytes = Encoding.UTF8.GetBytes(output);
-                await _telegram.SendDocumentAsync(chatId, bytes,
+                await _telegram.SendDocumentAsync(chatId, Encoding.UTF8.GetBytes(output),
                     $"output_{DateTime.Now:yyyyMMdd_HHmmss}.txt", "Command output", ct).ConfigureAwait(false);
-            }
         }
         catch (Exception ex)
         {
-            await ReplyAsync(chatId, $"❌ {TextUtil.Html(ex.Message)}", ct);
+            await SendTextAsync(chatId, $"❌ {TextUtil.Html(ex.Message)}", ct).ConfigureAwait(false);
         }
     }
 
-    private async Task HandleUnauthorizedAsync(long chatId, string cmd, string? arg, CancellationToken ct)
+    private async Task SendResultAsync(long chatId, Func<string> action, CancellationToken ct)
     {
-        if (cmd == "pair")
-        {
-            if (string.IsNullOrEmpty(PairingCode) || _failedPairAttempts >= MaxPairAttempts)
-            {
-                _log.Warning($"Pairing attempt from {chatId} rejected (no active code or too many failures).");
-                await _telegram.SendMessageAsync(chatId,
-                    "⛔ Pairing is not available right now. Generate a fresh code in the Soul Remote app and try again.",
-                    null, ct).ConfigureAwait(false);
-                return;
-            }
-
-            var provided = Encoding.UTF8.GetBytes((arg ?? string.Empty).Trim());
-            var expected = Encoding.UTF8.GetBytes(PairingCode);
-            if (CryptographicOperations.FixedTimeEquals(provided, expected))
-            {
-                PairingCode = string.Empty; // one-time use: invalidate immediately
-                Authorize(chatId);
-                await _telegram.SendMessageAsync(chatId,
-                    "✅ Paired successfully! This chat can now control the machine. Send /menu.", null, ct)
-                    .ConfigureAwait(false);
-                _log.Info($"Chat {chatId} authorized via pairing.");
-            }
-            else
-            {
-                _failedPairAttempts++;
-                _log.Warning($"Invalid pairing code from {chatId} ({_failedPairAttempts}/{MaxPairAttempts}).");
-                await _telegram.SendMessageAsync(chatId, "❌ Invalid pairing code.", null, ct).ConfigureAwait(false);
-            }
-            return;
-        }
-
-        // /start from an unknown chat
-        await _telegram.SendMessageAsync(chatId,
-            "👋 <b>Soul Remote</b>\n\nThis chat is not authorized yet.\n" +
-            "Open the Soul Remote app, copy the pairing code, then send:\n" +
-            "<code>/pair YOURCODE</code>", null, ct).ConfigureAwait(false);
+        try { await SendTextAsync(chatId, "✅ " + TextUtil.Html(action()), ct).ConfigureAwait(false); }
+        catch (Exception ex) { await SendTextAsync(chatId, "❌ " + TextUtil.Html(ex.Message), ct).ConfigureAwait(false); }
     }
 
-    // ---- menus ----
-
-    private Task SendMainMenuAsync(long chatId, string text, CancellationToken ct)
-    {
-        var kb = new TgInlineKeyboardMarkup
-        {
-            InlineKeyboard = new()
-            {
-                Row(("📸 Screenshot", "a:screenshot"), ("🖥 Sys Info", "a:sysinfo")),
-                Row(("🔒 Lock", "a:lock"), ("🌙 Sleep", "a:sleep"), ("🖤 Screen off", "a:monoff")),
-                Row(("🔉 Vol-", "a:voldown"), ("🔇 Mute", "a:mute"), ("🔊 Vol+", "a:volup")),
-                Row(("⏮", "a:prev"), ("⏯", "a:play"), ("⏭", "a:next")),
-                Row(("💽 Disks", "a:disks"), ("🔋 Battery", "a:battery")),
-                Row(("📋 Processes", "a:proc"), ("🌐 Network", "a:net")),
-                Row(("⚡ Power options", "m:power")),
-            },
-        };
-        return _telegram.SendMessageAsync(chatId, text, kb, ct);
-    }
-
-    private Task SendPowerMenuAsync(long chatId, CancellationToken ct)
-    {
-        var kb = new TgInlineKeyboardMarkup
-        {
-            InlineKeyboard = new()
-            {
-                Row(("⏻ Shutdown", "a:shutdown"), ("🔄 Restart", "a:restart")),
-                Row(("🚪 Log off", "a:logoff"), ("💤 Hibernate", "a:hibernate")),
-                Row(("✋ Cancel pending", "a:cancelpending")),
-                Row(("⬅ Back", "m:main")),
-            },
-        };
-        return _telegram.SendMessageAsync(chatId, "⚡ <b>Power options</b>", kb, ct);
-    }
-
-    private Task ConfirmAsync(long chatId, string action, string question, CancellationToken ct)
-    {
-        var kb = new TgInlineKeyboardMarkup
-        {
-            InlineKeyboard = new()
-            {
-                Row(("✅ Confirm", $"y:{action}"), ("❌ Cancel", "m:main")),
-            },
-        };
-        return _telegram.SendMessageAsync(chatId, $"⚠️ {question}", kb, ct);
-    }
-
-    // ---- generic runners ----
-
-    private async Task SafeRunAsync(long chatId, Func<string> action, CancellationToken ct)
-    {
-        try
-        {
-            var result = action();
-            await ReplyAsync(chatId, "✅ " + TextUtil.Html(result), ct);
-        }
-        catch (Exception ex)
-        {
-            await ReplyAsync(chatId, "❌ " + TextUtil.Html(ex.Message), ct);
-        }
-    }
-
-    private async Task SafeRunAsyncTask(long chatId, Func<Task<string>> action, CancellationToken ct)
+    private async Task SendAsyncResultAsync(long chatId, Func<Task<string>> action, CancellationToken ct)
     {
         try
         {
             var result = await action().ConfigureAwait(false);
-            await ReplyAsync(chatId, "✅ " + TextUtil.Html(result), ct);
+            await SendTextAsync(chatId, "✅ " + TextUtil.Html(result), ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            await ReplyAsync(chatId, "❌ " + TextUtil.Html(ex.Message), ct);
+            await SendTextAsync(chatId, "❌ " + TextUtil.Html(ex.Message), ct).ConfigureAwait(false);
         }
     }
 
-    private async Task RunTextAsync(long chatId, Func<Task<string>> producer, CancellationToken ct)
+    private async Task SendReportAsync(long chatId, Func<Task<string>> producer, CancellationToken ct)
     {
-        try
-        {
-            var text = await producer().ConfigureAwait(false);
-            await ReplyAsync(chatId, text, ct);
-        }
-        catch (Exception ex)
-        {
-            await ReplyAsync(chatId, "❌ " + TextUtil.Html(ex.Message), ct);
-        }
+        try { await SendTextAsync(chatId, await producer().ConfigureAwait(false), ct).ConfigureAwait(false); }
+        catch (Exception ex) { await SendTextAsync(chatId, "❌ " + TextUtil.Html(ex.Message), ct).ConfigureAwait(false); }
     }
 
-    private Task ReplyAsync(long chatId, string text, CancellationToken ct)
+    private Task SendTextAsync(long chatId, string text, CancellationToken ct)
         => _telegram.SendMessageAsync(chatId, text, null, ct);
 
-    // ---- auth ----
+    // ============================================================
+    // Pairing and authorization
+    // ============================================================
+
+    private async Task HandleUnauthorizedAsync(long chatId, string cmd, string? arg, CancellationToken ct)
+    {
+        if (cmd != "pair")
+        {
+            await _telegram.SendMessageAsync(chatId,
+                "👋 <b>Soul Remote</b>\n\nThis chat is not linked yet.\n" +
+                "Open the Soul Remote app, then send:\n<code>/pair YOURCODE</code>", null, ct).ConfigureAwait(false);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(PairingCode) || _failedPairAttempts >= MaxPairAttempts)
+        {
+            _log.Warning($"Pairing attempt from {chatId} rejected (no active code or too many failures).");
+            await _telegram.SendMessageAsync(chatId,
+                "⛔ Pairing is closed. Generate a fresh code in the Soul Remote app and try again.",
+                null, ct).ConfigureAwait(false);
+            return;
+        }
+
+        var provided = Encoding.UTF8.GetBytes((arg ?? string.Empty).Trim());
+        var expected = Encoding.UTF8.GetBytes(PairingCode);
+        if (CryptographicOperations.FixedTimeEquals(provided, expected))
+        {
+            PairingCode = string.Empty; // single use
+            Authorize(chatId);
+            _log.Info($"Chat {chatId} authorized via pairing.");
+            await SendWelcomeAsync(chatId, ct).ConfigureAwait(false);
+        }
+        else
+        {
+            _failedPairAttempts++;
+            _log.Warning($"Invalid pairing code from {chatId} ({_failedPairAttempts}/{MaxPairAttempts}).");
+            await _telegram.SendMessageAsync(chatId, "❌ That code is not right.", null, ct).ConfigureAwait(false);
+        }
+    }
 
     private bool IsAuthorized(long chatId) => _settings.Current.AuthorizedChatIds.Contains(chatId);
 
@@ -522,15 +638,22 @@ public sealed class CommandRouter
     {
         if (_settings.Current.AuthorizedChatIds.Contains(chatId))
             return;
-        // Clone before mutating so the live list (read by IsAuthorized on the poll thread) is
-        // never modified in place; Save swaps in the new snapshot atomically.
+        // Clone before mutating: the poll thread reads the live list.
         var settings = _settings.Current.Clone();
         settings.AuthorizedChatIds.Add(chatId);
         _settings.Save(settings);
         ChatAuthorized?.Invoke(chatId);
     }
 
-    // ---- parsing + keyboard helpers ----
+    // ============================================================
+    // Helpers
+    // ============================================================
+
+    private void Count(string label)
+    {
+        Interlocked.Increment(ref _commandsHandled);
+        CommandHandled?.Invoke(label);
+    }
 
     private static (string cmd, string? arg) ParseCommand(string raw)
     {
@@ -540,32 +663,14 @@ public sealed class CommandRouter
         var spaceIdx = body.IndexOf(' ');
         var cmdPart = spaceIdx < 0 ? body : body[..spaceIdx];
         var arg = spaceIdx < 0 ? null : body[(spaceIdx + 1)..].Trim();
-        // Strip @botusername suffix.
         var at = cmdPart.IndexOf('@');
         if (at >= 0) cmdPart = cmdPart[..at];
         return (cmdPart.ToLowerInvariant(), string.IsNullOrEmpty(arg) ? null : arg);
     }
 
-    private static (string kind, string value) ParseCallback(string data)
+    private static (string kind, string value) Split(string data)
     {
         var idx = data.IndexOf(':');
         return idx < 0 ? (data, string.Empty) : (data[..idx], data[(idx + 1)..]);
-    }
-
-    private static List<TgInlineKeyboardButton> Row(params (string text, string data)[] buttons)
-        => buttons.Select(b => new TgInlineKeyboardButton(b.text, b.data)).ToList();
-
-    private static string WelcomeText()
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine("👋 <b>Soul Remote</b> — remote control connected.");
-        sb.AppendLine();
-        sb.AppendLine("Use the buttons below, or type commands:");
-        sb.AppendLine("/screenshot, /sysinfo, /disks, /battery, /processes, /network");
-        sb.AppendLine("/lock, /sleep, /hibernate, /shutdown, /restart, /logoff, /cancel");
-        sb.AppendLine("/volume 0-100, /volup, /voldown, /mute, /play, /next, /prev");
-        sb.AppendLine("/kill &lt;name|pid&gt;, /cmd &lt;command&gt;, /whoami, /ping");
-        sb.AppendLine("/clipboard, /clip &lt;text&gt;, /open &lt;url&gt;, /type &lt;text&gt;, /say &lt;text&gt;, /screens");
-        return sb.ToString();
     }
 }

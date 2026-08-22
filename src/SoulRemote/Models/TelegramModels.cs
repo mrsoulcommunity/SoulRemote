@@ -76,3 +76,31 @@ public sealed class TgInlineKeyboardMarkup
     [JsonPropertyName("inline_keyboard")]
     public List<List<TgInlineKeyboardButton>> InlineKeyboard { get; set; } = new();
 }
+
+/// <summary>A button on the persistent reply keyboard below the message box.</summary>
+public sealed class TgKeyboardButton
+{
+    [JsonPropertyName("text")] public string Text { get; set; } = string.Empty;
+
+    public TgKeyboardButton() { }
+    public TgKeyboardButton(string text) => Text = text;
+}
+
+/// <summary>The always-visible shortcut bar under the composer.</summary>
+public sealed class TgReplyKeyboardMarkup
+{
+    [JsonPropertyName("keyboard")]
+    public List<List<TgKeyboardButton>> Keyboard { get; set; } = new();
+
+    [JsonPropertyName("resize_keyboard")] public bool ResizeKeyboard { get; set; } = true;
+    [JsonPropertyName("is_persistent")] public bool IsPersistent { get; set; } = true;
+    [JsonPropertyName("input_field_placeholder")] public string? Placeholder { get; set; }
+}
+
+/// <summary>Prompts the user for a value, showing a reply box pre-aimed at the bot.</summary>
+public sealed class TgForceReply
+{
+    [JsonPropertyName("force_reply")] public bool ForceReply { get; set; } = true;
+    [JsonPropertyName("input_field_placeholder")] public string? Placeholder { get; set; }
+    [JsonPropertyName("selective")] public bool Selective { get; set; }
+}

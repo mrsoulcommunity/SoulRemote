@@ -15,9 +15,18 @@ public interface ITelegramClient
     Task DeleteWebhookAsync(CancellationToken ct = default);
     Task<List<TgUpdate>> GetUpdatesAsync(long offset, int timeoutSeconds, CancellationToken ct = default);
     Task<long?> SendMessageAsync(long chatId, string text, TgInlineKeyboardMarkup? keyboard = null, CancellationToken ct = default);
+
+    /// <summary>Sends with any reply markup (inline keyboard, reply keyboard or force-reply).</summary>
+    Task<long?> SendWithMarkupAsync(long chatId, string text, object? replyMarkup, CancellationToken ct = default);
+
+    /// <summary>
+    /// Rewrites an existing message in place so menu navigation does not flood the chat.
+    /// Returns false when Telegram reports the content is unchanged.
+    /// </summary>
+    Task<bool> EditMessageAsync(long chatId, long messageId, string text, TgInlineKeyboardMarkup? keyboard, CancellationToken ct = default);
     Task SendPhotoAsync(long chatId, byte[] photo, string fileName, string? caption = null, CancellationToken ct = default);
     Task SendDocumentAsync(long chatId, byte[] file, string fileName, string? caption = null, CancellationToken ct = default);
-    Task AnswerCallbackAsync(string callbackId, string? text = null, CancellationToken ct = default);
+    Task AnswerCallbackAsync(string callbackId, string? text = null, bool showAlert = false, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -132,18 +141,58 @@ public sealed class TelegramClient : ITelegramClient
         return lastId;
     }
 
+    public async Task<long?> SendWithMarkupAsync(long chatId, string text, object? replyMarkup, CancellationToken ct = default)
+    {
+        var payload = new
+        {
+            chat_id = chatId,
+            text,
+            parse_mode = "HTML",
+            disable_web_page_preview = true,
+            reply_markup = replyMarkup,
+        };
+        var msg = await PostJsonAsync<TgMessage>("sendMessage", payload, ct).ConfigureAwait(false);
+        return msg?.MessageId;
+    }
+
+    public async Task<bool> EditMessageAsync(long chatId, long messageId, string text, TgInlineKeyboardMarkup? keyboard, CancellationToken ct = default)
+    {
+        var payload = new
+        {
+            chat_id = chatId,
+            message_id = messageId,
+            text,
+            parse_mode = "HTML",
+            disable_web_page_preview = true,
+            reply_markup = keyboard,
+        };
+        try
+        {
+            await PostJsonAsync<TgMessage>("editMessageText", payload, ct).ConfigureAwait(false);
+            return true;
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("not modified", StringComparison.OrdinalIgnoreCase))
+        {
+            // Tapping the button for the screen you are already on is not an error.
+            return false;
+        }
+    }
+
     public Task SendPhotoAsync(long chatId, byte[] photo, string fileName, string? caption = null, CancellationToken ct = default)
         => SendFileAsync("sendPhoto", "photo", chatId, photo, fileName, caption, "image/png", ct);
 
     public Task SendDocumentAsync(long chatId, byte[] file, string fileName, string? caption = null, CancellationToken ct = default)
         => SendFileAsync("sendDocument", "document", chatId, file, fileName, caption, "application/octet-stream", ct);
 
-    public async Task AnswerCallbackAsync(string callbackId, string? text = null, CancellationToken ct = default)
+    public async Task AnswerCallbackAsync(string callbackId, string? text = null, bool showAlert = false, CancellationToken ct = default)
     {
         try
         {
+            // Telegram caps callback toasts at 200 characters.
+            var toast = text ?? string.Empty;
+            if (toast.Length > 195) toast = toast[..195];
             await PostJsonAsync<object>("answerCallbackQuery",
-                new { callback_query_id = callbackId, text = text ?? string.Empty }, ct).ConfigureAwait(false);
+                new { callback_query_id = callbackId, text = toast, show_alert = showAlert }, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

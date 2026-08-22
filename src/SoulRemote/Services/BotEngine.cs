@@ -172,10 +172,11 @@ public sealed class BotEngine
 
     private async Task NotifyStartupAsync(AppSettings s)
     {
-        var text = $"🟢 <b>Soul Remote</b> online on <b>{TextUtil.Html(Environment.MachineName)}</b>.\nSend /menu to control.";
+        var text = $"🟢 <b>Soul Remote</b> online on <b>{TextUtil.Html(Environment.MachineName)}</b>.\nUse the buttons below.";
         foreach (var chatId in s.AuthorizedChatIds.ToArray())
         {
-            try { await _telegram.SendMessageAsync(chatId, text).ConfigureAwait(false); }
+            // Re-installs the shortcut bar so the controls are there after a restart.
+            try { await _telegram.SendWithMarkupAsync(chatId, text, BotMenu.ShortcutBar()).ConfigureAwait(false); }
             catch (Exception ex) { _log.Debug($"Startup notify to {chatId} failed: {ex.Message}"); }
         }
     }

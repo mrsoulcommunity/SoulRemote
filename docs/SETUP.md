@@ -22,30 +22,43 @@ linking your first chat.
 
 ## 3. Configure Soul Remote
 
-Open the app → **Settings**:
+Open the app → **Connect**:
 
-1. **Cloudflare**
-   - Paste the API token.
-   - Leave the worker name as `soul-remote-proxy` (or choose your own).
-   - Click **Connect & deploy worker**.
-   - On success you'll see something like
-     `https://soul-remote-proxy.<your-subdomain>.workers.dev`.
-2. **Telegram**
-   - Paste the bot token.
-   - Click **Test connection** — it should report `@yourbot OK`.
-3. **Options** — enable *Start with Windows* / *Auto-start bot* if you want it
-   always available, then click **Save settings**.
+1. Paste your **Cloudflare API token**.
+2. Leave the worker name as `soul-remote-proxy` (or choose your own).
+3. Paste your **Telegram bot token**.
+4. Press **Connect**.
+
+The bring-up sequence runs on the right and shows each stage as it completes:
+
+```
+✓ Verify Cloudflare token      Token is active
+✓ Resolve account              My Account
+✓ Find workers.dev subdomain   myname.workers.dev
+✓ Deploy relay worker          soul-remote-proxy
+✓ Publish public route         https://soul-remote-proxy.myname.workers.dev
+✓ Reach the edge               Edge is answering
+✓ Authenticate Telegram bot    @yourbot
+✓ Start listening              Listening for commands
+```
+
+If a stage fails, the pipeline stops there and the reason is shown on that
+stage — so you always know which part of the chain to fix.
+
+Preferences live on the **Settings** page and save as you change them.
 
 ## 4. Link your Telegram chat
 
 On the **Dashboard**:
 
-1. Click **Start bot** (status turns green “Online”).
+1. The relay is already listening after Connect (the relay line shows all three
+   hops lit).
 2. In Telegram, open your bot and send:
    ```
    /pair 123456
    ```
-   using the 6-digit code shown on the Dashboard.
+   using the 6-digit code shown on the Dashboard. The code is single-use and a
+   fresh one is issued after each successful pair.
 3. You should get “✅ Paired successfully”. Send `/menu` to get the button panel.
 
 ## 5. Everyday use
@@ -60,6 +73,8 @@ Type a command or tap a button:
 - `/play`, `/next`, `/prev`
 - `/kill chrome` or `/kill 1234`
 - `/cmd dir C:\` (only if you enabled shell commands)
+- `/clipboard` — read the clipboard; `/clip <text>` — set it
+- `/open <url|path>`, `/type <text>`, `/say <text>`, `/screens`
 - `/whoami`, `/ping`
 
 ## Troubleshooting

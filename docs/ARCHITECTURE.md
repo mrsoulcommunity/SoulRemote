@@ -19,12 +19,20 @@ long-polls Telegram *through* that worker and executes commands locally.
 ```
 src/SoulRemote/
   App.xaml(.cs)              app bootstrap, single-instance, tray, global error handling
-  MainWindow.xaml(.cs)       shell window with Dashboard / Settings / Logs tabs
-  Models/                    AppSettings, Telegram & Cloudflare DTOs
+  GlobalUsings.cs            pins names that clash between WPF and WinForms
+  MainWindow.xaml(.cs)       shell: custom chrome + navigation rail + page host
+  Resources/
+    Palette.xaml             colour tokens; colour means state, never decoration
+    Typography.xaml          Bahnschrift (display) / Segoe UI (body) / Consolas (data)
+    Controls.xaml            templated buttons, toggles, fields, nav, scrollbars
+  Controls/
+    RelayLine.xaml(.cs)      the signature control: live view of the three hops
+  Models/                    AppSettings, LinkState, Telegram & Cloudflare DTOs
   Services/
     AppServices.cs           composition root (manual DI)
+    ConnectionOrchestrator.cs one-press bring-up pipeline with per-stage reporting
     SettingsService.cs       JSON persistence + DPAPI encryption of secrets
-    CloudflareService.cs     token verify, account/subdomain lookup, worker deploy
+    CloudflareService.cs     granular Cloudflare API client (one op per method)
     TelegramClient.cs        Telegram Bot API calls, always via the worker URL
     BotEngine.cs             long-poll loop, lifecycle, reconnect/backoff
     CommandRouter.cs         maps updates -> actions, auth whitelist + pairing
@@ -35,15 +43,28 @@ src/SoulRemote/
     TrayIconManager.cs       tray icon + minimize-to-tray
     Native/                  Win32 P/Invoke + Core Audio COM interop
     Security/                DPAPI wrapper + CSPRNG helpers
-  ViewModels/                MVVM (Main/Dashboard/Settings/Log)
-  Views/                     UserControls for each tab
+  ViewModels/                MVVM (Shell/Dashboard/Connect/Settings/Log) + converters
+  Views/                     one UserControl per page, routed by implicit DataTemplates
   Assets/worker.js           embedded worker script (deployed via the CF API)
 cloudflare/worker.js         reference copy for manual/Wrangler deployment
 ```
 
 ## Key flows
 
-### Cloudflare connect & deploy
+### One-press connect
+
+`ConnectionOrchestrator.RunAsync` owns the whole bring-up so no single service
+has to know the workflow. Each stage is a `ConnectionStep` the UI binds to:
+
+1. Verify token -> 2. Resolve account -> 3. Resolve workers.dev subdomain ->
+4. Upload worker -> 5. Publish route -> 6. Probe the edge -> 7. `getMe` through
+that edge -> 8. Start the polling engine.
+
+Settings are persisted as each phase succeeds, so a failure halfway leaves the
+app with everything it had already established. The probe is advisory: edge
+propagation can lag, and step 7 is the real proof the chain works.
+
+### Cloudflare API calls
 1. `GET /user/tokens/verify` → token is active.
 2. `GET /accounts` → pick the account.
 3. `GET /accounts/{id}/workers/subdomain` → the `*.workers.dev` subdomain.

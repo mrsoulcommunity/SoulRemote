@@ -24,11 +24,19 @@ reachable, so the bot keeps working.
 | **System info** | OS/CPU/RAM/uptime, disks, battery/power, top processes, network (local + public IP) |
 | **Media & audio** | Play/Pause, Next, Previous, Volume up/down, set volume 0–100, mute toggle |
 | **Processes** | List top processes, kill by name or PID |
+| **Input & clipboard** | Read/set the clipboard, type into the focused window, open a URL or file, speak text aloud |
 | **Advanced** | Run shell commands via `/cmd` (opt‑in), inline‑button menus |
 
+- ⚡ **One‑press bring‑up** — paste both tokens and press **Connect**: Soul Remote
+  verifies the token, deploys the worker, publishes its route, probes the edge,
+  signs the bot in *through* that edge and starts listening — reporting every
+  stage live, and stopping with the reason on whichever stage broke.
+- 🎛 **Purpose‑built console UI** — a live **relay line** shows the three hops
+  (this PC → Cloudflare edge → Telegram); traffic only animates along a conduit
+  while that hop is actually carrying it.
 - 🔐 **Secure by default** — tokens encrypted at rest with Windows DPAPI, a
-  chat‑ID **whitelist**, a **pairing code** to link a chat, and a shared secret
-  so the deployed worker is not an open relay.
+  chat‑ID **whitelist**, a single‑use **pairing code** (rate‑limited, compared in
+  constant time), and a shared secret so the deployed worker is not an open relay.
 - 🧊 **Runs in the tray** — keeps working in the background; optional start with
   Windows and auto‑start of the bot.
 - 🧱 **Native & dependency‑light** — WPF on .NET 8, no third‑party NuGet packages.
@@ -72,17 +80,15 @@ use the **“Edit Cloudflare Workers”** template → Create → copy the token
 > Workers, open **Workers & Pages** once so a free `*.workers.dev` subdomain is
 > registered.
 
-### 2) Run Soul Remote → **Settings**
-1. Paste the **Cloudflare API token**, keep the default worker name, click
-   **Connect & deploy worker**. The proxy URL appears when it succeeds.
-2. Paste the **Telegram bot token**, click **Test connection**.
-3. Adjust options (start with Windows, auto‑start bot, etc.), click **Save**.
+### 2) Run Soul Remote → **Connect**
+1. Paste the **Cloudflare API token** and the **Telegram bot token**.
+2. Press **Connect**. The bring‑up sequence runs on the right; when it finishes
+   the relay endpoint appears and the bot is already listening.
 
 ### 3) Link your Telegram chat (Dashboard)
-1. Click **Start bot**.
-2. Open your bot in Telegram, send `/pair <code>` using the code shown on the
-   Dashboard.
-3. You're in — send `/menu`.
+1. Open your bot in Telegram and send `/pair <code>` with the code on the
+   Dashboard. The code works once, then a fresh one is issued.
+2. You're in — send `/menu`.
 
 Full walkthrough: [`docs/SETUP.md`](docs/SETUP.md).
 
@@ -127,19 +133,20 @@ Requires the **.NET 8 SDK** (Windows). CI builds the same on every push
 
 ### راه‌اندازی
 ۱. در **Cloudflare** یک **API Token** با قالب «Edit Cloudflare Workers» بسازید.
-۲. در برنامه به **Settings** بروید، توکن کلادفلر را وارد و روی **Connect & deploy
-   worker** بزنید تا ورکر پراکسی ساخته شود.
-۳. توکن **بات تلگرام** (از @BotFather) را وارد و **Test connection** بزنید و
-   تنظیمات را ذخیره کنید.
-۴. در **Dashboard** روی **Start bot** بزنید، سپس در تلگرام دستور
-   `/pair <کد>` را با کدی که نمایش داده می‌شود بفرستید.
+۲. در برنامه به صفحهٔ **Connect** بروید و **هر دو توکن** (کلادفلر و بات تلگرام) را وارد کنید.
+۳. روی **Connect** بزنید. برنامه خودش ورکر را دیپلوی می‌کند، مسیر عمومی را منتشر می‌کند،
+   لبه را تست می‌کند، بات را از همان مسیر وارد می‌کند و شروع به گوش‌دادن می‌کند —
+   هر مرحله زنده گزارش می‌شود.
+۴. در **Dashboard** کد جفت‌سازی را ببینید و در تلگرام `/pair <کد>` را بفرستید
+   (کد یک‌بارمصرف است).
 ۵. حالا `/menu` را بفرستید و سیستم را کنترل کنید.
 
 ### امنیت
 - توکن‌ها با DPAPI ویندوز رمزنگاری و فقط برای کاربر فعلی ذخیره می‌شوند.
 - فقط چت‌هایی که با «کد جفت‌سازی» تأیید شده‌اند اجازهٔ کنترل دارند.
 - ورکر با هدر مخفی `X-Proxy-Secret` محافظت می‌شود تا پراکسی عمومی نشود.
-- قابلیت اجرای دستور دلخواه (`/cmd`) به‌صورت پیش‌فرض غیرفعال است.
+- قابلیت اجرای دستور دلخواه (`/cmd`) و دسترسی به فایل‌ها به‌صورت پیش‌فرض غیرفعال است.
+- کد جفت‌سازی یک‌بارمصرف، با محدودیت تعداد تلاش و مقایسهٔ ثابت‌زمان است.
 
 </div>
 

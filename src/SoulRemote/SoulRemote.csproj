@@ -19,7 +19,7 @@
     <Platforms>AnyCPU</Platforms>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <!-- WinForms + WPF are both enabled; suppress the trim/analyzer noise that is irrelevant to a desktop app. -->
-    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <NoWarn>$(NoWarn);CA1416;WFAC010</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

@@ -87,7 +87,9 @@ public sealed class LogService : ILogService
     {
         var app = Application.Current;
         if (app?.Dispatcher is { } dispatcher && !dispatcher.CheckAccess())
-            dispatcher.Invoke(action);
+            // BeginInvoke (non-blocking) so background logging never waits on the UI thread,
+            // which also avoids deadlocking during shutdown.
+            dispatcher.BeginInvoke(action);
         else
             action();
     }

@@ -94,7 +94,8 @@ public sealed class DashboardViewModel : ViewModelBase
         var result = MessageBox.Show("Remove all authorized Telegram chats?",
             "Soul Remote", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (result != MessageBoxResult.Yes) return;
-        var s = _services.Settings.Current;
+        // Clone before mutating: the poll-loop thread reads the live AuthorizedChatIds list.
+        var s = _services.Settings.Current.Clone();
         s.AuthorizedChatIds.Clear();
         _services.Settings.Save(s);
         RefreshAll();
@@ -105,14 +106,19 @@ public sealed class DashboardViewModel : ViewModelBase
         var s = _services.Settings.Current;
         WorkerUrl = string.IsNullOrEmpty(s.WorkerUrl) ? "—" : s.WorkerUrl;
         BotUsername = string.IsNullOrEmpty(s.TelegramBotUsername) ? "—" : "@" + s.TelegramBotUsername;
-        var count = s.AuthorizedChatIds.Count;
-        AuthorizedSummary = count == 0
+        var ids = s.AuthorizedChatIds.ToArray(); // snapshot; list may be swapped from the poll thread
+        AuthorizedSummary = ids.Length == 0
             ? "No chats linked yet — send the pairing code from Telegram."
-            : $"{count} chat(s) linked: {string.Join(", ", s.AuthorizedChatIds)}";
+            : $"{ids.Length} chat(s) linked: {string.Join(", ", ids)}";
         UpdateStatus();
     }
 
-    private void OnChatAuthorized(long chatId) => RunOnUi(RefreshAll);
+    private void OnChatAuthorized(long chatId) => RunOnUi(() =>
+    {
+        // The router consumes the code on a successful pair; issue a fresh one for the next chat.
+        GeneratePairingCode();
+        RefreshAll();
+    });
 
     private void OnBotStateChanged() => RunOnUi(() =>
     {
@@ -159,7 +165,7 @@ public sealed class DashboardViewModel : ViewModelBase
     {
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is not null && !dispatcher.CheckAccess())
-            dispatcher.Invoke(action);
+            dispatcher.BeginInvoke(action);
         else
             action();
     }

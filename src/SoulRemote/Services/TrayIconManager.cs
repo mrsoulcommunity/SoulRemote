@@ -19,6 +19,7 @@ public sealed class TrayIconManager : IDisposable
     private readonly ToolStripMenuItem _toggleItem;
     private bool _exiting;
     private bool _balloonShown;
+    private bool _disposed;
 
     public TrayIconManager(WpfWindow window, AppServices services, Action exitAction)
     {
@@ -67,7 +68,8 @@ public sealed class TrayIconManager : IDisposable
 
     private void OnBotStateChanged()
     {
-        _window.Dispatcher.Invoke(() =>
+        // Non-blocking marshal so a background StateChanged never waits on the UI thread.
+        _window.Dispatcher.BeginInvoke(() =>
         {
             UpdateToggleText();
             _notifyIcon.Text = _services.Bot.IsRunning
@@ -124,6 +126,9 @@ public sealed class TrayIconManager : IDisposable
 
     public void Dispose()
     {
+        if (_disposed)
+            return;
+        _disposed = true;
         _services.Bot.StateChanged -= OnBotStateChanged;
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();

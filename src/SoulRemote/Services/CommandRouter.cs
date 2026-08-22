@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using SoulRemote.Models;
 
@@ -18,8 +19,20 @@ public sealed class CommandRouter
     private readonly ISystemInfoService _info;
     private readonly ILogService _log;
 
-    /// <summary>One-time pairing code shown in the desktop app UI.</summary>
-    public string PairingCode { get; set; } = string.Empty;
+    private const int MaxPairAttempts = 5;
+    private string _pairingCode = string.Empty;
+    private int _failedPairAttempts;
+
+    /// <summary>One-time pairing code shown in the desktop app UI. Setting it resets the lockout.</summary>
+    public string PairingCode
+    {
+        get => _pairingCode;
+        set
+        {
+            _pairingCode = value ?? string.Empty;
+            _failedPairAttempts = 0;
+        }
+    }
 
     /// <summary>Raised (on a background thread) when a new chat is authorized via pairing.</summary>
     public event Action<long>? ChatAuthorized;
@@ -310,8 +323,19 @@ public sealed class CommandRouter
         try
         {
             var output = await _system.RunShellCommandAsync(arg!, ct).ConfigureAwait(false);
-            if (output.Length > 3800) output = output[..3800] + "\n...(truncated)";
-            await _telegram.SendMessageAsync(chatId, TextUtil.Pre(output), null, ct).ConfigureAwait(false);
+            var pre = TextUtil.Pre(output);
+            // HTML escaping can multiply the length; if the single <pre> block would exceed
+            // Telegram's message limit (and risk being split mid-tag), send it as a text file.
+            if (pre.Length <= 3500)
+            {
+                await _telegram.SendMessageAsync(chatId, pre, null, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                var bytes = Encoding.UTF8.GetBytes(output);
+                await _telegram.SendDocumentAsync(chatId, bytes,
+                    $"output_{DateTime.Now:yyyyMMdd_HHmmss}.txt", "Command output", ct).ConfigureAwait(false);
+            }
         }
         catch (Exception ex)
         {
@@ -323,9 +347,20 @@ public sealed class CommandRouter
     {
         if (cmd == "pair")
         {
-            if (!string.IsNullOrEmpty(PairingCode) &&
-                string.Equals(arg?.Trim(), PairingCode, StringComparison.Ordinal))
+            if (string.IsNullOrEmpty(PairingCode) || _failedPairAttempts >= MaxPairAttempts)
             {
+                _log.Warning($"Pairing attempt from {chatId} rejected (no active code or too many failures).");
+                await _telegram.SendMessageAsync(chatId,
+                    "⛔ Pairing is not available right now. Generate a fresh code in the Soul Remote app and try again.",
+                    null, ct).ConfigureAwait(false);
+                return;
+            }
+
+            var provided = Encoding.UTF8.GetBytes((arg ?? string.Empty).Trim());
+            var expected = Encoding.UTF8.GetBytes(PairingCode);
+            if (CryptographicOperations.FixedTimeEquals(provided, expected))
+            {
+                PairingCode = string.Empty; // one-time use: invalidate immediately
                 Authorize(chatId);
                 await _telegram.SendMessageAsync(chatId,
                     "✅ Paired successfully! This chat can now control the machine. Send /menu.", null, ct)
@@ -334,6 +369,8 @@ public sealed class CommandRouter
             }
             else
             {
+                _failedPairAttempts++;
+                _log.Warning($"Invalid pairing code from {chatId} ({_failedPairAttempts}/{MaxPairAttempts}).");
                 await _telegram.SendMessageAsync(chatId, "❌ Invalid pairing code.", null, ct).ConfigureAwait(false);
             }
             return;
@@ -443,13 +480,14 @@ public sealed class CommandRouter
 
     private void Authorize(long chatId)
     {
-        var settings = _settings.Current;
-        if (!settings.AuthorizedChatIds.Contains(chatId))
-        {
-            settings.AuthorizedChatIds.Add(chatId);
-            _settings.Save(settings);
-            ChatAuthorized?.Invoke(chatId);
-        }
+        if (_settings.Current.AuthorizedChatIds.Contains(chatId))
+            return;
+        // Clone before mutating so the live list (read by IsAuthorized on the poll thread) is
+        // never modified in place; Save swaps in the new snapshot atomically.
+        var settings = _settings.Current.Clone();
+        settings.AuthorizedChatIds.Add(chatId);
+        _settings.Save(settings);
+        ChatAuthorized?.Invoke(chatId);
     }
 
     // ---- parsing + keyboard helpers ----

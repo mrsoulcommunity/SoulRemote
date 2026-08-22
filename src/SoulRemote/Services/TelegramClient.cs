@@ -96,13 +96,28 @@ public sealed class TelegramClient : ITelegramClient
 
     public async Task<long?> SendMessageAsync(long chatId, string text, TgInlineKeyboardMarkup? keyboard = null, CancellationToken ct = default)
     {
-        // Telegram caps message text at 4096 chars; split defensively.
+        // Telegram caps message text at 4096 chars; split defensively. Our HTML messages are
+        // line-structured (tags/entities never span a newline), so break on the last newline
+        // before the limit to avoid splitting inside a tag or entity.
+        if (string.IsNullOrEmpty(text))
+            return null;
+
         const int max = 4000;
         long? lastId = null;
-        for (var i = 0; i < text.Length; i += max)
+        var pos = 0;
+        while (pos < text.Length)
         {
-            var chunk = text.Substring(i, Math.Min(max, text.Length - i));
-            var isLast = i + max >= text.Length;
+            var remaining = text.Length - pos;
+            var take = Math.Min(max, remaining);
+            if (take == max)
+            {
+                var nl = text.LastIndexOf('\n', pos + take - 1, take);
+                if (nl > pos)
+                    take = nl - pos + 1;
+            }
+            var chunk = text.Substring(pos, take);
+            pos += take;
+            var isLast = pos >= text.Length;
             var payload = new
             {
                 chat_id = chatId,

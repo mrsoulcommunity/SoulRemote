@@ -1,4 +1,5 @@
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using SoulRemote.Services;
 using SoulRemote.ViewModels;
@@ -80,12 +81,25 @@ public partial class App : Application
 
     public void ExplicitShutdown()
     {
+        // Stop the bot WITHOUT blocking the UI thread: StopAsync marshals state/log
+        // callbacks back onto the dispatcher, so a blocking .GetResult() here would
+        // deadlock. Awaiting keeps the message loop pumping; we finish on the UI thread.
+        _ = ShutdownGracefullyAsync();
+    }
+
+    private async Task ShutdownGracefullyAsync()
+    {
         try
         {
-            _services?.Bot.StopAsync().GetAwaiter().GetResult();
+            if (_services is not null)
+                await _services.Bot.StopAsync();
         }
-        catch { /* ignore shutdown errors */ }
+        catch (Exception ex)
+        {
+            _services?.Log.Error("Error while stopping the bot on exit", ex);
+        }
         _tray?.Dispose();
+        _tray = null;
         Shutdown();
     }
 

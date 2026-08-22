@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
@@ -168,11 +169,18 @@ public sealed class CloudflareService : ICloudflareService
                 if (resp.IsSuccessStatusCode)
                     return;
             }
-            catch (Exception ex) when (attempt < 5)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // The health check must only WARN, never fail the deploy — the worker was
+                // already uploaded. Swallow every attempt's transient error (incl. the last).
                 _log.Debug($"Worker not reachable yet (attempt {attempt}): {ex.Message}");
             }
-            await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct).ConfigureAwait(false);
+            if (attempt < 5)
+                await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct).ConfigureAwait(false);
         }
         _log.Warning("Worker deployed but health check did not confirm reachability yet; it may still be propagating.");
     }

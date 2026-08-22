@@ -34,8 +34,8 @@ public sealed class DashboardViewModel : ViewModelBase
     private string _statusText = "● Offline";
     public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
 
-    private Brush _statusColor = new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x6B));
-    public Brush StatusColor { get => _statusColor; private set => SetProperty(ref _statusColor, value); }
+    private System.Windows.Media.Brush _statusColor = new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x6B));
+    public System.Windows.Media.Brush StatusColor { get => _statusColor; private set => SetProperty(ref _statusColor, value); }
 
     private string _detail = string.Empty;
     public string Detail { get => _detail; private set => SetProperty(ref _detail, value); }
@@ -127,28 +127,28 @@ public sealed class DashboardViewModel : ViewModelBase
         {
             case BotState.Running:
                 StatusText = "● Online";
-                StatusColor = Brush(0x3D, 0xD6, 0x8C);
+                StatusColor = MakeBrush(0x3D, 0xD6, 0x8C);
                 Detail = _services.Bot.LastError is { Length: > 0 } err ? $"Warning: {err}" : "Listening for Telegram commands.";
                 break;
             case BotState.Starting:
                 StatusText = "● Starting…";
-                StatusColor = Brush(0xF5, 0xB9, 0x42);
+                StatusColor = MakeBrush(0xF5, 0xB9, 0x42);
                 Detail = "Connecting through Cloudflare…";
                 break;
             case BotState.Error:
                 StatusText = "● Error";
-                StatusColor = Brush(0xFF, 0x6B, 0x6B);
+                StatusColor = MakeBrush(0xFF, 0x6B, 0x6B);
                 Detail = _services.Bot.LastError ?? "Unknown error.";
                 break;
             default:
                 StatusText = "● Offline";
-                StatusColor = Brush(0xFF, 0x6B, 0x6B);
+                StatusColor = MakeBrush(0xFF, 0x6B, 0x6B);
                 Detail = "Bot is stopped.";
                 break;
         }
     }
 
-    private static SolidColorBrush Brush(byte r, byte g, byte b)
+    private static SolidColorBrush MakeBrush(byte r, byte g, byte b)
     {
         var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
         brush.Freeze();

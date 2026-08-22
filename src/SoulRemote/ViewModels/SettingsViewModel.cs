@@ -111,6 +111,16 @@ public sealed class SettingsViewModel : ViewModelBase
             var clamped = Math.Clamp(value, 5, 50);
             if (SetProperty(ref _pollTimeoutSeconds, clamped))
                 Persist(s => s.PollTimeoutSeconds = clamped);
+
+            // If we coerced what the user typed, the TextBox is still showing their
+            // number. Re-notify after the binding's own update pass so it snaps back
+            // to the value that was actually saved.
+            if (clamped != value)
+            {
+                Application.Current?.Dispatcher.BeginInvoke(
+                    System.Windows.Threading.DispatcherPriority.DataBind,
+                    () => OnPropertyChanged(nameof(PollTimeoutSeconds)));
+            }
         }
     }
 

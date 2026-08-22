@@ -70,6 +70,10 @@ public sealed class ShellViewModel : ViewModelBase
             _ => Dashboard,
         };
         CurrentKey = key is "connect" or "settings" or "logs" ? key : "dashboard";
+        // Settings changed on another page (Reduce motion, for one) only reach the
+        // dashboard when it is next shown.
+        if (CurrentKey == "dashboard")
+            Dashboard.Refresh();
     }
 
     private void OnBotStateChanged() => UiThread.Post(UpdateStatus);

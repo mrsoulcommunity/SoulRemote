@@ -110,9 +110,12 @@ public sealed class TrayIconManager : IDisposable
 
     private void ShowWindow()
     {
-        _window.Show();
+        // Order matters: on the start-minimized path the window has never been shown,
+        // so calling Show() while WindowState is still Minimized raises StateChanged
+        // and sends it straight back to the tray. Restore first, then show.
         _window.ShowInTaskbar = true;
         _window.WindowState = WindowState.Normal;
+        _window.Show();
         _window.Activate();
         _window.Topmost = true;
         _window.Topmost = false;

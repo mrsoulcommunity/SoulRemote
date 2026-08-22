@@ -194,7 +194,8 @@ public sealed class DashboardViewModel : ViewModelBase
 
     private void OnBotStateChanged() => UiThread.Post(Refresh);
 
-    private void Refresh()
+    /// <summary>Re-reads settings and bot state. Called when the page is shown.</summary>
+    public void Refresh()
     {
         var s = _services.Settings.Current;
         var running = _services.Bot.State == BotState.Running;

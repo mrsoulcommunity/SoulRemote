@@ -381,7 +381,7 @@ public sealed class CommandRouter
                 await SendResultAsync(chatId, () => _system.TypeText(input), ct).ConfigureAwait(false);
                 return;
             case PromptKind.OpenLink:
-                await SendResultAsync(chatId, () => _system.OpenTarget(input), ct).ConfigureAwait(false);
+                await OpenTargetAsync(chatId, input, ct).ConfigureAwait(false);
                 return;
             case PromptKind.Speak:
                 await SendAsyncResultAsync(chatId, () => _system.SpeakAsync(input, ct), ct).ConfigureAwait(false);
@@ -459,7 +459,7 @@ public sealed class CommandRouter
                 break;
             case "open":
                 if (!string.IsNullOrWhiteSpace(arg))
-                    await SendResultAsync(chatId, () => _system.OpenTarget(arg!), ct).ConfigureAwait(false);
+                    await OpenTargetAsync(chatId, arg!, ct).ConfigureAwait(false);
                 break;
             case "type":
                 if (!string.IsNullOrWhiteSpace(arg))
@@ -539,6 +539,28 @@ public sealed class CommandRouter
         {
             await SendTextAsync(chatId, $"❌ {TextUtil.Html(ex.Message)}", ct).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Opening a web link is harmless, but "open" with a local path runs whatever it
+    /// points at — the same power as a shell command. So a web link is always allowed
+    /// and anything local needs the file-access switch the desktop app owns.
+    /// </summary>
+    private async Task OpenTargetAsync(long chatId, string target, CancellationToken ct)
+    {
+        var trimmed = target.Trim();
+        var isWebLink = Uri.TryCreate(trimmed, UriKind.Absolute, out var uri)
+                        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+
+        if (!isWebLink && !_settings.Current.AllowFileAccess)
+        {
+            await SendTextAsync(chatId,
+                "🔒 Only web links are allowed. To open files and folders on this PC, " +
+                "turn on file access in the Soul Remote app.", ct).ConfigureAwait(false);
+            return;
+        }
+
+        await SendResultAsync(chatId, () => _system.OpenTarget(trimmed), ct).ConfigureAwait(false);
     }
 
     private async Task RunShellAsync(long chatId, string command, CancellationToken ct)

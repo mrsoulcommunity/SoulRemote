@@ -85,7 +85,7 @@ public static class BotMenu
         Keyboard(
             Row(("📋 Read clipboard", "a:clip")),
             Row(("✏️ Set clipboard…", "i:clip"), ("⌨️ Type text…", "i:type")),
-            Row(("🔗 Open link…", "i:open"), ("🗣 Speak…", "i:say")),
+            Row(("🔗 Open…", "i:open"), ("🗣 Speak…", "i:say")),
             Row(("⬅ Back", "m:home"))));
 
     public static Screen System() => new(

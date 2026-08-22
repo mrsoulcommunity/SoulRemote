@@ -38,7 +38,7 @@ public sealed class ChatPrompts
         PromptKind.Clipboard => "Send the text to put on the clipboard.",
         PromptKind.TypeText => "Send the text to type into the focused window.",
         PromptKind.Speak => "Send the text to speak aloud.",
-        PromptKind.OpenLink => "Send a link, file or folder to open.",
+        PromptKind.OpenLink => "Send a web link to open. Files and folders need file access switched on.",
         PromptKind.ShellCommand => "Send the command to run.",
         _ => "Send a value.",
     };

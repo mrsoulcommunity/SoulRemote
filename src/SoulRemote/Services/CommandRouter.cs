@@ -185,6 +185,34 @@ public sealed class CommandRouter
             case "cmd":
                 await HandleCmdAsync(chatId, arg, ct);
                 break;
+            case "clipboard":
+            case "clip":
+                if (string.IsNullOrWhiteSpace(arg))
+                    await ReplyAsync(chatId, TextUtil.Pre(_system.GetClipboardText()), ct);
+                else
+                    await SafeRunAsync(chatId, () => _system.SetClipboardText(arg!), ct);
+                break;
+            case "open":
+                if (string.IsNullOrWhiteSpace(arg))
+                    await ReplyAsync(chatId, "Usage: <code>/open &lt;url or path&gt;</code>", ct);
+                else
+                    await SafeRunAsync(chatId, () => _system.OpenTarget(arg!), ct);
+                break;
+            case "type":
+                if (string.IsNullOrWhiteSpace(arg))
+                    await ReplyAsync(chatId, "Usage: <code>/type &lt;text&gt;</code>", ct);
+                else
+                    await SafeRunAsync(chatId, () => _system.TypeText(arg!), ct);
+                break;
+            case "say":
+                if (string.IsNullOrWhiteSpace(arg))
+                    await ReplyAsync(chatId, "Usage: <code>/say &lt;text&gt;</code>", ct);
+                else
+                    await SafeRunAsyncTask(chatId, () => _system.SpeakAsync(arg!, ct), ct);
+                break;
+            case "screens":
+                await ReplyAsync(chatId, $"This PC has <b>{_screenshot.ScreenCount}</b> display(s). Use <code>/screenshot 0</code> to capture one.", ct);
+                break;
             case "whoami":
                 await ReplyAsync(chatId, $"Your chat ID: <code>{chatId}</code>", ct);
                 break;
@@ -537,6 +565,7 @@ public sealed class CommandRouter
         sb.AppendLine("/lock, /sleep, /hibernate, /shutdown, /restart, /logoff, /cancel");
         sb.AppendLine("/volume 0-100, /volup, /voldown, /mute, /play, /next, /prev");
         sb.AppendLine("/kill &lt;name|pid&gt;, /cmd &lt;command&gt;, /whoami, /ping");
+        sb.AppendLine("/clipboard, /clip &lt;text&gt;, /open &lt;url&gt;, /type &lt;text&gt;, /say &lt;text&gt;, /screens");
         return sb.ToString();
     }
 }

@@ -26,6 +26,12 @@ public interface ISystemControlService
 
     string KillProcess(string nameOrPid);
     Task<string> RunShellCommandAsync(string command, CancellationToken ct = default);
+
+    string GetClipboardText();
+    string SetClipboardText(string text);
+    string OpenTarget(string target);
+    string TypeText(string text);
+    Task<string> SpeakAsync(string text, CancellationToken ct = default);
 }
 
 public sealed class SystemControlService : ISystemControlService
@@ -189,6 +195,87 @@ public sealed class SystemControlService : ISystemControlService
         if (string.IsNullOrWhiteSpace(output))
             output = $"(no output, exit code {proc.ExitCode})";
         return output;
+    }
+
+    public string GetClipboardText()
+    {
+        // The clipboard is STA-only, so every access is marshalled to the UI thread.
+        var text = OnUiThread(() => Clipboard.ContainsText() ? Clipboard.GetText() : string.Empty);
+        return string.IsNullOrEmpty(text) ? "Clipboard holds no text." : text;
+    }
+
+    public string SetClipboardText(string text)
+    {
+        OnUiThread(() =>
+        {
+            Clipboard.SetText(text);
+            return true;
+        });
+        return "Clipboard updated.";
+    }
+
+    public string OpenTarget(string target)
+    {
+        if (string.IsNullOrWhiteSpace(target))
+            throw new ArgumentException("Give me a URL, file or folder to open.");
+        Process.Start(new ProcessStartInfo(target.Trim()) { UseShellExecute = true });
+        return $"Opened {target.Trim()}";
+    }
+
+    public string TypeText(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            throw new ArgumentException("Give me some text to type.");
+        // SendKeys treats these as command characters, so they are escaped to literals.
+        var escaped = new StringBuilder();
+        foreach (var c in text)
+            escaped.Append(c is '+' or '^' or '%' or '~' or '(' or ')' or '{' or '}' or '[' or ']'
+                ? "{" + c + "}"
+                : c.ToString());
+
+        OnUiThread(() =>
+        {
+            System.Windows.Forms.SendKeys.SendWait(escaped.ToString());
+            return true;
+        });
+        return $"Typed {text.Length} character(s) into the focused window.";
+    }
+
+    public async Task<string> SpeakAsync(string text, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            throw new ArgumentException("Give me something to say.");
+        // Uses the speech synthesiser already present on Windows, so no extra dependency.
+        var safe = text.Replace("'", "''");
+        var script = "Add-Type -AssemblyName System.Speech; " +
+                     "(New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('" + safe + "')";
+        var psi = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardError = true,
+        };
+        psi.ArgumentList.Add("-NoProfile");
+        psi.ArgumentList.Add("-NonInteractive");
+        psi.ArgumentList.Add("-Command");
+        psi.ArgumentList.Add(script);
+
+        using var proc = new Process { StartInfo = psi };
+        proc.Start();
+        var err = await proc.StandardError.ReadToEndAsync(ct).ConfigureAwait(false);
+        await proc.WaitForExitAsync(ct).ConfigureAwait(false);
+        if (proc.ExitCode != 0)
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(err) ? "Speech failed." : err.Trim());
+        return "Spoken on this PC.";
+    }
+
+    private static T OnUiThread<T>(Func<T> action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+            return action();
+        return dispatcher.Invoke(action);
     }
 
     private static string CurrentVolumeText()

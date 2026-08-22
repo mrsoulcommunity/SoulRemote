@@ -9,3 +9,7 @@ global using MessageBox = System.Windows.MessageBox;
 global using Clipboard = System.Windows.Clipboard;
 global using Color = System.Windows.Media.Color;
 global using UserControl = System.Windows.Controls.UserControl;
+
+// The app's own relay-hop state clashes with System.Windows.Forms.LinkState
+// (a link-label concept this app never uses), so the name is pinned here too.
+global using LinkState = SoulRemote.Models.LinkState;

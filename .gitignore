@@ -1,0 +1,36 @@
+## .NET / Visual Studio
+bin/
+obj/
+out/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+.vscode/
+_ReSharper*/
+*.DotSettings.user
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+publish/
+*.dll
+*.exe
+*.pdb
+
+## Rider
+.idea/
+
+## OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+## App runtime data (never commit secrets)
+settings.json
+*.log

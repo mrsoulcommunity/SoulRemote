@@ -1,0 +1,40 @@
+name: build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore SoulRemote.sln
+
+      - name: Build
+        run: dotnet build SoulRemote.sln -c Release --no-restore
+
+      - name: Publish (self-contained x64)
+        run: >
+          dotnet publish src/SoulRemote/SoulRemote.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -o publish
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoulRemote-win-x64
+          path: publish/SoulRemote.exe
+          if-no-files-found: warn

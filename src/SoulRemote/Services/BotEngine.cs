@@ -61,10 +61,11 @@ public sealed class BotEngine
             BotUsername = me.Username;
             _log.Info($"Connected as @{me.Username}.");
 
-            if (!string.Equals(s.TelegramBotUsername, me.Username, StringComparison.Ordinal))
+            if (!string.Equals(_settings.Current.TelegramBotUsername, me.Username, StringComparison.Ordinal))
             {
-                s.TelegramBotUsername = me.Username ?? string.Empty;
-                _settings.Save(s);
+                var updated = _settings.Current.Clone();
+                updated.TelegramBotUsername = me.Username ?? string.Empty;
+                _settings.Save(updated);
             }
 
             await _telegram.DeleteWebhookAsync().ConfigureAwait(false);
@@ -133,7 +134,7 @@ public sealed class BotEngine
             if (pending.Count > 0)
                 offset = pending.Max(u => u.UpdateId) + 1;
         }
-        catch (OperationCanceledException) { return; }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
         catch (Exception ex) { _log.Debug($"Backlog drain skipped: {ex.Message}"); }
 
         _log.Info("Polling for commands...");
@@ -144,18 +145,25 @@ public sealed class BotEngine
             {
                 var updates = await _telegram.GetUpdatesAsync(offset, timeout, ct).ConfigureAwait(false);
                 backoff = 1;
+                if (LastError is not null)
+                {
+                    // Polling recovered; stop showing the old error.
+                    LastError = null;
+                    StateChanged?.Invoke();
+                }
                 foreach (var update in updates)
                 {
                     offset = Math.Max(offset, update.UpdateId + 1);
                     await _router.HandleUpdateAsync(update, ct).ConfigureAwait(false);
                 }
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 break;
             }
             catch (Exception ex)
             {
+                // A long-poll that times out lands here too, and must retry rather than end.
                 _log.Warning($"Polling error: {ex.Message}. Retrying in {backoff}s.");
                 if (State != BotState.Error)
                 {

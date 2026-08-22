@@ -187,7 +187,10 @@ public sealed class SystemControlService : ISystemControlService
         }
         catch (OperationCanceledException)
         {
-            try { proc.Kill(true); } catch { /* ignore */ }
+            try { proc.Kill(true); } catch { /* already gone */ }
+            // A genuine stop is not a timeout: let the caller unwind.
+            if (ct.IsCancellationRequested)
+                throw;
             return "Command timed out after 60 seconds and was terminated.";
         }
 
@@ -227,11 +230,21 @@ public sealed class SystemControlService : ISystemControlService
         if (string.IsNullOrEmpty(text))
             throw new ArgumentException("Give me some text to type.");
         // SendKeys treats these as command characters, so they are escaped to literals.
+        // Line breaks and tabs must become explicit key names: an unescaped '\n' resolves
+        // to Ctrl+J, which is a live shortcut in browsers and editors.
         var escaped = new StringBuilder();
-        foreach (var c in text)
+        foreach (var c in text.Replace("\r\n", "\n"))
+        {
+            switch (c)
+            {
+                case '\n': escaped.Append("{ENTER}"); continue;
+                case '\r': continue;
+                case '\t': escaped.Append("{TAB}"); continue;
+            }
             escaped.Append(c is '+' or '^' or '%' or '~' or '(' or ')' or '{' or '}' or '[' or ']'
                 ? "{" + c + "}"
                 : c.ToString());
+        }
 
         OnUiThread(() =>
         {
@@ -245,10 +258,16 @@ public sealed class SystemControlService : ISystemControlService
     {
         if (string.IsNullOrWhiteSpace(text))
             throw new ArgumentException("Give me something to say.");
+        // Long text would hold the single-threaded poll loop for minutes.
+        if (text.Length > 500)
+            text = text[..500];
+
         // Uses the speech synthesiser already present on Windows, so no extra dependency.
-        var safe = text.Replace("'", "''");
+        // The text travels as base64 so no quote character can escape the script literal.
+        var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(text));
         var script = "Add-Type -AssemblyName System.Speech; " +
-                     "(New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('" + safe + "')";
+                     "(New-Object System.Speech.Synthesis.SpeechSynthesizer)" +
+                     ".Speak([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('" + encoded + "')))";
         var psi = new ProcessStartInfo
         {
             FileName = "powershell.exe",
@@ -263,8 +282,24 @@ public sealed class SystemControlService : ISystemControlService
 
         using var proc = new Process { StartInfo = psi };
         proc.Start();
-        var err = await proc.StandardError.ReadToEndAsync(ct).ConfigureAwait(false);
-        await proc.WaitForExitAsync(ct).ConfigureAwait(false);
+        var errTask = proc.StandardError.ReadToEndAsync(ct);
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(60));
+        try
+        {
+            await proc.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Never leave the synthesiser talking after we stop waiting for it.
+            try { proc.Kill(true); } catch { /* already gone */ }
+            if (ct.IsCancellationRequested)
+                throw;
+            return "Speech stopped after 60 seconds.";
+        }
+
+        var err = await errTask.ConfigureAwait(false);
         if (proc.ExitCode != 0)
             throw new InvalidOperationException(string.IsNullOrWhiteSpace(err) ? "Speech failed." : err.Trim());
         return "Spoken on this PC.";

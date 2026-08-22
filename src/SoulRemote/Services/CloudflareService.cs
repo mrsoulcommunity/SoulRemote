@@ -19,7 +19,7 @@ public interface ICloudflareService
     Task<List<CfAccount>> GetAccountsAsync(string apiToken, CancellationToken ct = default);
     Task<string?> GetWorkersDevSubdomainAsync(string apiToken, string accountId, CancellationToken ct = default);
     Task UploadWorkerAsync(string apiToken, string accountId, string workerName, string proxySecret, CancellationToken ct = default);
-    Task EnableSubdomainRouteAsync(string apiToken, string accountId, string workerName, CancellationToken ct = default);
+    Task<bool> EnableSubdomainRouteAsync(string apiToken, string accountId, string workerName, CancellationToken ct = default);
 
     /// <summary>Polls the deployed worker's health endpoint until it answers. Never throws on failure.</summary>
     Task<bool> ProbeWorkerAsync(string workerUrl, string proxySecret, CancellationToken ct = default);
@@ -66,17 +66,11 @@ public sealed class CloudflareService : ICloudflareService
 
     public async Task<string?> GetWorkersDevSubdomainAsync(string apiToken, string accountId, CancellationToken ct = default)
     {
+        // A transport or permission error must propagate: only a successful response with
+        // no subdomain means the account has not claimed one.
         using var req = Build(HttpMethod.Get, $"{ApiBase}/accounts/{accountId}/workers/subdomain", apiToken);
-        try
-        {
-            var sub = await SendAsync<CfSubdomain>(req, ct).ConfigureAwait(false);
-            return sub?.Subdomain;
-        }
-        catch (Exception ex)
-        {
-            _log.Warning($"Could not read the workers.dev subdomain: {ex.Message}");
-            return null;
-        }
+        var sub = await SendAsync<CfSubdomain>(req, ct).ConfigureAwait(false);
+        return sub?.Subdomain;
     }
 
     public async Task UploadWorkerAsync(string apiToken, string accountId, string workerName, string proxySecret, CancellationToken ct = default)
@@ -109,18 +103,25 @@ public sealed class CloudflareService : ICloudflareService
         await SendRawAsync(req, ct).ConfigureAwait(false);
     }
 
-    public async Task EnableSubdomainRouteAsync(string apiToken, string accountId, string workerName, CancellationToken ct = default)
+    public async Task<bool> EnableSubdomainRouteAsync(string apiToken, string accountId, string workerName, CancellationToken ct = default)
     {
         using var req = Build(HttpMethod.Post, $"{ApiBase}/accounts/{accountId}/workers/scripts/{workerName}/subdomain", apiToken);
         req.Content = new StringContent("{\"enabled\":true}", Encoding.UTF8, "application/json");
         try
         {
             await SendRawAsync(req, ct).ConfigureAwait(false);
+            return true;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            // Non-fatal: the route is usually already enabled from an earlier deploy.
-            _log.Debug($"Enable route returned: {ex.Message}");
+            // Not fatal on a re-deploy where the route already exists, but the caller must
+            // know it was not confirmed rather than being told the route is published.
+            _log.Warning($"Could not publish the public route: {ex.Message}");
+            return false;
         }
     }
 

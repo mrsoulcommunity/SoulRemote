@@ -453,25 +453,37 @@ public sealed class CommandRouter
             case "clipboard":
                 await SendClipboardAsync(chatId, ct).ConfigureAwait(false);
                 break;
+            // Each of these needs a value. Without one, ask for it rather than going silent.
             case "clip":
                 if (!string.IsNullOrWhiteSpace(arg))
                     await SendResultAsync(chatId, () => _system.SetClipboardText(arg!), ct).ConfigureAwait(false);
+                else
+                    await AskInChatAsync(chatId, PromptKind.Clipboard, ct).ConfigureAwait(false);
                 break;
             case "open":
                 if (!string.IsNullOrWhiteSpace(arg))
                     await OpenTargetAsync(chatId, arg!, ct).ConfigureAwait(false);
+                else
+                    await AskInChatAsync(chatId, PromptKind.OpenLink, ct).ConfigureAwait(false);
                 break;
             case "type":
                 if (!string.IsNullOrWhiteSpace(arg))
                     await SendResultAsync(chatId, () => _system.TypeText(arg!), ct).ConfigureAwait(false);
+                else
+                    await AskInChatAsync(chatId, PromptKind.TypeText, ct).ConfigureAwait(false);
                 break;
             case "say":
                 if (!string.IsNullOrWhiteSpace(arg))
                     await SendAsyncResultAsync(chatId, () => _system.SpeakAsync(arg!, ct), ct).ConfigureAwait(false);
+                else
+                    await AskInChatAsync(chatId, PromptKind.Speak, ct).ConfigureAwait(false);
                 break;
             case "cmd":
-                if (!string.IsNullOrWhiteSpace(arg))
-                    await RunShellAsync(chatId, arg!, ct).ConfigureAwait(false);
+                // Called unconditionally so the "switched off" notice is still sent.
+                if (!_settings.Current.AllowShellCommands || !string.IsNullOrWhiteSpace(arg))
+                    await RunShellAsync(chatId, arg ?? string.Empty, ct).ConfigureAwait(false);
+                else
+                    await AskInChatAsync(chatId, PromptKind.ShellCommand, ct).ConfigureAwait(false);
                 break;
             case "whoami":
                 await SendTextAsync(chatId, $"Your chat ID: <code>{chatId}</code>", ct).ConfigureAwait(false);
@@ -563,11 +575,25 @@ public sealed class CommandRouter
         await SendResultAsync(chatId, () => _system.OpenTarget(trimmed), ct).ConfigureAwait(false);
     }
 
+    /// <summary>Asks for a missing value from a typed command, reusing the button flow's prompt.</summary>
+    private async Task AskInChatAsync(long chatId, PromptKind kind, CancellationToken ct)
+    {
+        _prompts.Ask(chatId, kind);
+        await _telegram.SendWithMarkupAsync(chatId, ChatPrompts.PromptFor(kind),
+            new TgForceReply { Placeholder = ChatPrompts.PlaceholderFor(kind), Selective = true }, ct)
+            .ConfigureAwait(false);
+    }
+
     private async Task RunShellAsync(long chatId, string command, CancellationToken ct)
     {
         if (!_settings.Current.AllowShellCommands)
         {
             await SendTextAsync(chatId, "🔒 Shell commands are switched off in the desktop app.", ct).ConfigureAwait(false);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            await AskInChatAsync(chatId, PromptKind.ShellCommand, ct).ConfigureAwait(false);
             return;
         }
         try

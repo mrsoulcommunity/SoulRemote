@@ -119,16 +119,19 @@ public sealed class ConnectionOrchestrator
         try
         {
             // A secret is minted once and reused, so the worker never becomes an open relay.
+            // Credentials are NOT written yet: a mistyped token must not overwrite a working
+            // configuration before it has been verified.
             var settings = _settings.Current.Clone();
             if (string.IsNullOrWhiteSpace(settings.ProxySecret))
                 settings.ProxySecret = SecureRandom.Token(28);
-            settings.CloudflareApiToken = cfToken;
-            settings.TelegramBotToken = botToken;
             settings.WorkerName = workerName;
             _settings.Save(settings);
 
             current = Begin(_verifyToken);
             await _cloudflare.VerifyTokenAsync(cfToken, ct).ConfigureAwait(false);
+            var verified = _settings.Current.Clone();
+            verified.CloudflareApiToken = cfToken;
+            _settings.Save(verified);
             Complete(_verifyToken, "Token is active");
 
             current = Begin(_resolveAccount);
@@ -145,14 +148,20 @@ public sealed class ConnectionOrchestrator
             Complete(_resolveSubdomain, $"{subdomain}.workers.dev");
 
             current = Begin(_deployWorker);
-            var proxySecret = _settings.Current.ProxySecret;
+            var proxySecret = settings.ProxySecret;
+            if (string.IsNullOrWhiteSpace(proxySecret))
+                throw new InvalidOperationException(
+                    "Could not establish the proxy secret, so the worker would be deployed as an open relay. Deployment stopped.");
             await _cloudflare.UploadWorkerAsync(cfToken, account.Id, workerName, proxySecret, ct).ConfigureAwait(false);
             Complete(_deployWorker, workerName);
 
             current = Begin(_enableRoute);
-            await _cloudflare.EnableSubdomainRouteAsync(cfToken, account.Id, workerName, ct).ConfigureAwait(false);
+            var routed = await _cloudflare.EnableSubdomainRouteAsync(cfToken, account.Id, workerName, ct).ConfigureAwait(false);
             var workerUrl = $"https://{workerName}.{subdomain}.workers.dev";
-            Complete(_enableRoute, workerUrl);
+            if (routed)
+                Complete(_enableRoute, workerUrl);
+            else
+                Warn(_enableRoute, "Route not confirmed — continuing");
 
             current = Begin(_probeEdge);
             var reachable = await _cloudflare.ProbeWorkerAsync(workerUrl, proxySecret, ct).ConfigureAwait(false);
@@ -173,9 +182,10 @@ public sealed class ConnectionOrchestrator
             current = Begin(_verifyBot);
             _telegram.Configure(workerUrl, botToken, proxySecret);
             var me = await _telegram.GetMeAsync(ct).ConfigureAwait(false);
-            settings = _settings.Current.Clone();
-            settings.TelegramBotUsername = me.Username ?? string.Empty;
-            _settings.Save(settings);
+            var withBot = _settings.Current.Clone();
+            withBot.TelegramBotToken = botToken;
+            withBot.TelegramBotUsername = me.Username ?? string.Empty;
+            _settings.Save(withBot);
             Complete(_verifyBot, $"@{me.Username}");
 
             current = Begin(_startRelay);
@@ -185,7 +195,7 @@ public sealed class ConnectionOrchestrator
             _log.Info($"Relay is up: {workerUrl} as @{me.Username}.");
             return new ConnectionResult(true, workerUrl, me.Username, null);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             if (current is not null)
                 Fail(current, "Cancelled");

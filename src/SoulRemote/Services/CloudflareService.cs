@@ -8,15 +8,24 @@ using SoulRemote.Models;
 
 namespace SoulRemote.Services;
 
+/// <summary>
+/// Thin, single-purpose client for the slice of the Cloudflare API v4 that Soul
+/// Remote needs. It performs one API operation per method and holds no workflow
+/// state; sequencing those operations is <see cref="ConnectionOrchestrator"/>'s job.
+/// </summary>
 public interface ICloudflareService
 {
     Task<CfTokenVerify> VerifyTokenAsync(string apiToken, CancellationToken ct = default);
     Task<List<CfAccount>> GetAccountsAsync(string apiToken, CancellationToken ct = default);
+    Task<string?> GetWorkersDevSubdomainAsync(string apiToken, string accountId, CancellationToken ct = default);
+    Task UploadWorkerAsync(string apiToken, string accountId, string workerName, string proxySecret, CancellationToken ct = default);
+    Task EnableSubdomainRouteAsync(string apiToken, string accountId, string workerName, CancellationToken ct = default);
 
-    /// <summary>Verifies the token, deploys the proxy worker and returns its public URL.</summary>
-    Task<CloudflareDeployResult> ConnectAndDeployAsync(
-        string apiToken, string workerName, string proxySecret,
-        string? preferredAccountId, CancellationToken ct = default);
+    /// <summary>Polls the deployed worker's health endpoint until it answers. Never throws on failure.</summary>
+    Task<bool> ProbeWorkerAsync(string workerUrl, string proxySecret, CancellationToken ct = default);
+
+    /// <summary>Normalises a user-supplied worker name to what Cloudflare accepts.</summary>
+    string NormalizeWorkerName(string name);
 }
 
 public sealed class CloudflareService : ICloudflareService
@@ -40,7 +49,8 @@ public sealed class CloudflareService : ICloudflareService
         using var req = Build(HttpMethod.Get, $"{ApiBase}/user/tokens/verify", apiToken);
         var result = await SendAsync<CfTokenVerify>(req, ct).ConfigureAwait(false);
         if (result is null || !string.Equals(result.Status, "active", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Cloudflare token is not active. Check the token and its permissions.");
+            throw new InvalidOperationException(
+                "This Cloudflare token is not active. Create one from the \"Edit Cloudflare Workers\" template and paste it again.");
         return result;
     }
 
@@ -49,53 +59,12 @@ public sealed class CloudflareService : ICloudflareService
         using var req = Build(HttpMethod.Get, $"{ApiBase}/accounts?per_page=50", apiToken);
         var accounts = await SendAsync<List<CfAccount>>(req, ct).ConfigureAwait(false);
         if (accounts is null || accounts.Count == 0)
-            throw new InvalidOperationException("No Cloudflare accounts are accessible with this token.");
+            throw new InvalidOperationException(
+                "The token works but reaches no account. Give it Account -> Workers Scripts -> Edit permission.");
         return accounts;
     }
 
-    public async Task<CloudflareDeployResult> ConnectAndDeployAsync(
-        string apiToken, string workerName, string proxySecret,
-        string? preferredAccountId, CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(apiToken))
-            throw new ArgumentException("Cloudflare API token is required.", nameof(apiToken));
-
-        workerName = NormalizeWorkerName(workerName);
-
-        _log.Info("Verifying Cloudflare token...");
-        await VerifyTokenAsync(apiToken, ct).ConfigureAwait(false);
-
-        var accounts = await GetAccountsAsync(apiToken, ct).ConfigureAwait(false);
-        var account = accounts.FirstOrDefault(a => a.Id == preferredAccountId) ?? accounts[0];
-        _log.Info($"Using Cloudflare account '{account.Name}' ({account.Id}).");
-
-        var subdomain = await GetWorkersDevSubdomainAsync(apiToken, account.Id, ct).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(subdomain))
-            throw new InvalidOperationException(
-                "This account has no workers.dev subdomain yet. Open the Cloudflare dashboard > Workers & Pages once to register a free subdomain, then retry.");
-
-        _log.Info($"Deploying worker '{workerName}'...");
-        await UploadWorkerAsync(apiToken, account.Id, workerName, proxySecret, ct).ConfigureAwait(false);
-
-        _log.Info("Enabling workers.dev route...");
-        await EnableSubdomainAsync(apiToken, account.Id, workerName, ct).ConfigureAwait(false);
-
-        var url = $"https://{workerName}.{subdomain}.workers.dev";
-        _log.Info($"Worker deployed at {url}");
-
-        // Confirm the worker actually answers (edge propagation can lag a few seconds).
-        await VerifyWorkerReachableAsync(url, proxySecret, ct).ConfigureAwait(false);
-
-        return new CloudflareDeployResult
-        {
-            AccountId = account.Id,
-            AccountName = account.Name,
-            Subdomain = subdomain,
-            WorkerUrl = url,
-        };
-    }
-
-    private async Task<string?> GetWorkersDevSubdomainAsync(string apiToken, string accountId, CancellationToken ct)
+    public async Task<string?> GetWorkersDevSubdomainAsync(string apiToken, string accountId, CancellationToken ct = default)
     {
         using var req = Build(HttpMethod.Get, $"{ApiBase}/accounts/{accountId}/workers/subdomain", apiToken);
         try
@@ -105,12 +74,12 @@ public sealed class CloudflareService : ICloudflareService
         }
         catch (Exception ex)
         {
-            _log.Warning($"Could not read workers.dev subdomain: {ex.Message}");
+            _log.Warning($"Could not read the workers.dev subdomain: {ex.Message}");
             return null;
         }
     }
 
-    private async Task UploadWorkerAsync(string apiToken, string accountId, string workerName, string proxySecret, CancellationToken ct)
+    public async Task UploadWorkerAsync(string apiToken, string accountId, string workerName, string proxySecret, CancellationToken ct = default)
     {
         var script = LoadWorkerScript();
 
@@ -122,7 +91,7 @@ public sealed class CloudflareService : ICloudflareService
         {
             main_module = "worker.js",
             compatibility_date = CompatibilityDate,
-            bindings = bindings,
+            bindings,
         };
 
         using var form = new MultipartFormDataContent();
@@ -137,11 +106,10 @@ public sealed class CloudflareService : ICloudflareService
 
         using var req = Build(HttpMethod.Put, $"{ApiBase}/accounts/{accountId}/workers/scripts/{workerName}", apiToken);
         req.Content = form;
-        // Read to ensure success/error surfaces; result body is the script metadata.
         await SendRawAsync(req, ct).ConfigureAwait(false);
     }
 
-    private async Task EnableSubdomainAsync(string apiToken, string accountId, string workerName, CancellationToken ct)
+    public async Task EnableSubdomainRouteAsync(string apiToken, string accountId, string workerName, CancellationToken ct = default)
     {
         using var req = Build(HttpMethod.Post, $"{ApiBase}/accounts/{accountId}/workers/scripts/{workerName}/subdomain", apiToken);
         req.Content = new StringContent("{\"enabled\":true}", Encoding.UTF8, "application/json");
@@ -151,23 +119,23 @@ public sealed class CloudflareService : ICloudflareService
         }
         catch (Exception ex)
         {
-            // Non-fatal: the route may already be enabled from a prior deploy.
-            _log.Warning($"Enable subdomain returned: {ex.Message}");
+            // Non-fatal: the route is usually already enabled from an earlier deploy.
+            _log.Debug($"Enable route returned: {ex.Message}");
         }
     }
 
-    private async Task VerifyWorkerReachableAsync(string url, string proxySecret, CancellationToken ct)
+    public async Task<bool> ProbeWorkerAsync(string workerUrl, string proxySecret, CancellationToken ct = default)
     {
         for (var attempt = 1; attempt <= 5; attempt++)
         {
             try
             {
-                using var req = new HttpRequestMessage(HttpMethod.Get, $"{url}/healthz");
+                using var req = new HttpRequestMessage(HttpMethod.Get, $"{workerUrl.TrimEnd('/')}/healthz");
                 if (!string.IsNullOrEmpty(proxySecret))
                     req.Headers.TryAddWithoutValidation("X-Proxy-Secret", proxySecret);
                 using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
                 if (resp.IsSuccessStatusCode)
-                    return;
+                    return true;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -175,17 +143,27 @@ public sealed class CloudflareService : ICloudflareService
             }
             catch (Exception ex)
             {
-                // The health check must only WARN, never fail the deploy — the worker was
-                // already uploaded. Swallow every attempt's transient error (incl. the last).
-                _log.Debug($"Worker not reachable yet (attempt {attempt}): {ex.Message}");
+                // The probe only reports reachability; a failure here never fails a deploy.
+                _log.Debug($"Edge not answering yet (attempt {attempt}): {ex.Message}");
             }
+
             if (attempt < 5)
                 await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct).ConfigureAwait(false);
         }
-        _log.Warning("Worker deployed but health check did not confirm reachability yet; it may still be propagating.");
+        return false;
     }
 
-    // ---- helpers ----
+    public string NormalizeWorkerName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "soul-remote-proxy";
+        var cleaned = new string(name.Trim().ToLowerInvariant()
+                .Select(c => char.IsLetterOrDigit(c) || c == '-' ? c : '-').ToArray())
+            .Trim('-');
+        return string.IsNullOrEmpty(cleaned) ? "soul-remote-proxy" : cleaned;
+    }
+
+    // ---- transport helpers ----
 
     private static HttpRequestMessage Build(HttpMethod method, string url, string apiToken)
     {
@@ -198,11 +176,10 @@ public sealed class CloudflareService : ICloudflareService
     private async Task<T?> SendAsync<T>(HttpRequestMessage req, CancellationToken ct)
     {
         var body = await SendRawAsync(req, ct).ConfigureAwait(false);
-        var parsed = JsonSerializer.Deserialize<CfResponse<T>>(body, JsonOptions);
-        if (parsed is null)
-            throw new InvalidOperationException("Empty response from Cloudflare.");
+        var parsed = JsonSerializer.Deserialize<CfResponse<T>>(body, JsonOptions)
+                     ?? throw new InvalidOperationException("Cloudflare returned an empty response.");
         if (!parsed.Success)
-            throw new InvalidOperationException("Cloudflare API error: " + parsed.ErrorSummary());
+            throw new InvalidOperationException("Cloudflare rejected the request: " + parsed.ErrorSummary());
         return parsed.Result;
     }
 
@@ -210,30 +187,21 @@ public sealed class CloudflareService : ICloudflareService
     {
         using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-        if (!resp.IsSuccessStatusCode)
-        {
-            // Try to surface the Cloudflare error array for a useful message.
-            var message = $"HTTP {(int)resp.StatusCode} {resp.ReasonPhrase}";
-            try
-            {
-                var err = JsonSerializer.Deserialize<CfResponse<object>>(body, JsonOptions);
-                if (err is { Success: false })
-                    message += " — " + err.ErrorSummary();
-            }
-            catch { /* body was not JSON */ }
-            throw new InvalidOperationException(message);
-        }
-        return body;
-    }
+        if (resp.IsSuccessStatusCode)
+            return body;
 
-    private static string NormalizeWorkerName(string name)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-            return "soul-remote-proxy";
-        var cleaned = new string(name.Trim().ToLowerInvariant()
-            .Select(c => char.IsLetterOrDigit(c) || c == '-' ? c : '-').ToArray())
-            .Trim('-');
-        return string.IsNullOrEmpty(cleaned) ? "soul-remote-proxy" : cleaned;
+        var message = $"HTTP {(int)resp.StatusCode} {resp.ReasonPhrase}";
+        try
+        {
+            var err = JsonSerializer.Deserialize<CfResponse<object>>(body, JsonOptions);
+            if (err is { Success: false })
+                message += " — " + err.ErrorSummary();
+        }
+        catch (JsonException)
+        {
+            // Body was not JSON; the status line is the best message available.
+        }
+        throw new InvalidOperationException(message);
     }
 
     private static string LoadWorkerScript()
@@ -242,7 +210,7 @@ public sealed class CloudflareService : ICloudflareService
         var resourceName = asm.GetManifestResourceNames()
             .FirstOrDefault(n => n.EndsWith("worker.js", StringComparison.OrdinalIgnoreCase));
         if (resourceName is null)
-            throw new InvalidOperationException("Embedded worker.js resource not found.");
+            throw new InvalidOperationException("The embedded worker.js resource is missing from this build.");
         using var stream = asm.GetManifestResourceStream(resourceName)!;
         using var reader = new StreamReader(stream, Encoding.UTF8);
         return reader.ReadToEnd();

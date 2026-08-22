@@ -4,7 +4,10 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="Resources/Theme.xaml" />
+                <!-- Order matters: tokens, then type, then controls that consume both. -->
+                <ResourceDictionary Source="Resources/Palette.xaml" />
+                <ResourceDictionary Source="Resources/Typography.xaml" />
+                <ResourceDictionary Source="Resources/Controls.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

@@ -1,10 +1,10 @@
 using System.Collections.Specialized;
-using System.Windows.Controls;
+using System.Windows;
 using SoulRemote.ViewModels;
 
 namespace SoulRemote.Views;
 
-public partial class LogView : UserControl
+public partial class LogView
 {
     private INotifyCollectionChanged? _observed;
 
@@ -12,13 +12,12 @@ public partial class LogView : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        Unloaded += (_, _) => Detach();
     }
 
-    private void OnDataContextChanged(object sender, System.Windows.DependencyPropertyChangedEventArgs e)
+    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (_observed is not null)
-            _observed.CollectionChanged -= OnCollectionChanged;
-
+        Detach();
         if (DataContext is LogViewModel vm)
         {
             _observed = vm.Entries;
@@ -26,9 +25,19 @@ public partial class LogView : UserControl
         }
     }
 
+    private void Detach()
+    {
+        if (_observed is null)
+            return;
+        _observed.CollectionChanged -= OnCollectionChanged;
+        _observed = null;
+    }
+
+    // Keep the newest line in view, but only while the user is already at the bottom.
     private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        if (e.Action == NotifyCollectionChangedAction.Add && LogList.Items.Count > 0)
-            LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]);
+        if (e.Action != NotifyCollectionChangedAction.Add || LogList.Items.Count == 0)
+            return;
+        LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]);
     }
 }

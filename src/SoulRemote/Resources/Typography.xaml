@@ -1,0 +1,93 @@
+<!--
+    Soul Remote — type system.
+
+    Three roles, three faces:
+      Display  Bahnschrift, the condensed industrial grotesque that ships with
+               Windows. Used for headings, nav and control labels; it gives the
+               app the feel of instrumentation rather than a web dashboard.
+      Body     Segoe UI for prose, which stays legible at small sizes.
+      Data     Consolas for anything machine-readable: tokens, IDs, URLs, log
+               lines, telemetry. If a value came from a machine, it is monospaced.
+
+    Every family lists fallbacks so the app degrades cleanly on older Windows.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+    <FontFamily x:Key="DisplayFont">Bahnschrift, Segoe UI Variable Display, Segoe UI</FontFamily>
+    <FontFamily x:Key="BodyFont">Segoe UI Variable Text, Segoe UI, Tahoma</FontFamily>
+    <FontFamily x:Key="DataFont">Consolas, Cascadia Mono, Courier New</FontFamily>
+
+    <!-- Type scale. Deliberate steps, not a linear ramp. -->
+    <sys:Double x:Key="SizeMicro">10</sys:Double>
+    <sys:Double x:Key="SizeLabel">11</sys:Double>
+    <sys:Double x:Key="SizeBody">13</sys:Double>
+    <sys:Double x:Key="SizeLead">15</sys:Double>
+    <sys:Double x:Key="SizeTitle">20</sys:Double>
+    <sys:Double x:Key="SizeDisplay">30</sys:Double>
+
+    <!-- Body copy. -->
+    <Style x:Key="Body" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource BodyFont}" />
+        <Setter Property="FontSize" Value="{StaticResource SizeBody}" />
+        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+    </Style>
+
+    <Style x:Key="BodyDim" TargetType="TextBlock" BasedOn="{StaticResource Body}">
+        <Setter Property="Foreground" Value="{StaticResource InkDimBrush}" />
+    </Style>
+
+    <!-- Section titles. -->
+    <Style x:Key="Title" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+        <Setter Property="FontSize" Value="{StaticResource SizeTitle}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style x:Key="Display" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+        <Setter Property="FontSize" Value="{StaticResource SizeDisplay}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+    </Style>
+
+    <!--
+        Eyebrow: the small tracked-out label above a section. Tracking is what
+        makes a condensed face read as instrumentation panelling.
+    -->
+    <Style x:Key="Eyebrow" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+        <Setter Property="FontSize" Value="{StaticResource SizeLabel}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource InkFaintBrush}" />
+    </Style>
+
+    <!-- Machine-readable values. -->
+    <Style x:Key="Data" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource DataFont}" />
+        <Setter Property="FontSize" Value="{StaticResource SizeBody}" />
+        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="TextWrapping" Value="NoWrap" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <Style x:Key="DataDim" TargetType="TextBlock" BasedOn="{StaticResource Data}">
+        <Setter Property="Foreground" Value="{StaticResource InkDimBrush}" />
+        <Setter Property="FontSize" Value="{StaticResource SizeLabel}" />
+    </Style>
+
+    <!-- Field label sitting above an input. -->
+    <Style x:Key="FieldLabel" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+        <Setter Property="FontSize" Value="{StaticResource SizeLabel}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource InkDimBrush}" />
+        <Setter Property="Margin" Value="0,0,0,6" />
+    </Style>
+
+</ResourceDictionary>

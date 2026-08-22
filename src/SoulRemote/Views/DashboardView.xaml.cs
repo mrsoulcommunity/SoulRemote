@@ -1,11 +1,6 @@
-using System.Windows.Controls;
-
 namespace SoulRemote.Views;
 
-public partial class DashboardView : UserControl
+public partial class DashboardView
 {
-    public DashboardView()
-    {
-        InitializeComponent();
-    }
+    public DashboardView() => InitializeComponent();
 }

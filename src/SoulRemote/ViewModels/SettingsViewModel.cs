@@ -1,206 +1,148 @@
 using SoulRemote.Services;
-using SoulRemote.Services.Security;
 
 namespace SoulRemote.ViewModels;
 
+/// <summary>
+/// Preferences only. Connecting Cloudflare and Telegram lives on the Connect
+/// page so this screen stays a list of decisions, not a setup flow.
+/// </summary>
 public sealed class SettingsViewModel : ViewModelBase
 {
     private readonly AppServices _services;
+    private bool _loading;
 
     public SettingsViewModel(AppServices services)
     {
         _services = services;
-        LoadFromSettings();
-
-        ConnectCloudflareCommand = new AsyncRelayCommand(ConnectCloudflareAsync, () => !IsBusy);
-        TestTelegramCommand = new AsyncRelayCommand(TestTelegramAsync, () => !IsBusy && IsCloudflareConnected);
-        SaveCommand = new RelayCommand(Save);
+        Load();
+        OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
+        OpenSettingsFileCommand = new RelayCommand(OpenSettingsFolder);
     }
 
-    // ---- Cloudflare ----
-    private string _cloudflareApiToken = string.Empty;
-    public string CloudflareApiToken { get => _cloudflareApiToken; set => SetProperty(ref _cloudflareApiToken, value); }
+    private void Load()
+    {
+        _loading = true;
+        var s = _services.Settings.Current;
+        _startWithWindows = _services.Startup.IsEnabled();
+        _startMinimized = s.StartMinimized;
+        _autoStartBot = s.AutoStartBot;
+        _notifyOnStartup = s.NotifyOnStartup;
+        _allowShellCommands = s.AllowShellCommands;
+        _allowFileAccess = s.AllowFileAccess;
+        _reduceMotion = s.ReduceMotion;
+        _pollTimeoutSeconds = s.PollTimeoutSeconds <= 0 ? 25 : s.PollTimeoutSeconds;
+        _loading = false;
+    }
 
-    private string _workerName = "soul-remote-proxy";
-    public string WorkerName { get => _workerName; set => SetProperty(ref _workerName, value); }
+    // Each toggle saves immediately: there is no Save button to forget.
+    private void Persist(Action<Models.AppSettings> mutate)
+    {
+        if (_loading)
+            return;
+        var s = _services.Settings.Current.Clone();
+        mutate(s);
+        _services.Settings.Save(s);
+        SavedAt = $"Saved {DateTime.Now:HH:mm:ss}";
+    }
 
-    private string _proxySecret = string.Empty;
-    public string ProxySecret { get => _proxySecret; set => SetProperty(ref _proxySecret, value); }
-
-    private string _workerUrl = string.Empty;
-    public string WorkerUrl { get => _workerUrl; private set { if (SetProperty(ref _workerUrl, value)) OnPropertyChanged(nameof(IsCloudflareConnected)); } }
-
-    public bool IsCloudflareConnected => !string.IsNullOrWhiteSpace(WorkerUrl);
-
-    private string _cloudflareStatus = string.Empty;
-    public string CloudflareStatus { get => _cloudflareStatus; private set => SetProperty(ref _cloudflareStatus, value); }
-
-    // ---- Telegram ----
-    private string _telegramBotToken = string.Empty;
-    public string TelegramBotToken { get => _telegramBotToken; set => SetProperty(ref _telegramBotToken, value); }
-
-    private string _telegramStatus = string.Empty;
-    public string TelegramStatus { get => _telegramStatus; private set => SetProperty(ref _telegramStatus, value); }
-
-    // ---- toggles ----
-    private bool _allowShellCommands;
-    public bool AllowShellCommands { get => _allowShellCommands; set => SetProperty(ref _allowShellCommands, value); }
+    private string _savedAt = string.Empty;
+    public string SavedAt { get => _savedAt; private set => SetProperty(ref _savedAt, value); }
 
     private bool _startWithWindows;
-    public bool StartWithWindows { get => _startWithWindows; set => SetProperty(ref _startWithWindows, value); }
-
-    private bool _autoStartBot;
-    public bool AutoStartBot { get => _autoStartBot; set => SetProperty(ref _autoStartBot, value); }
+    public bool StartWithWindows
+    {
+        get => _startWithWindows;
+        set
+        {
+            if (!SetProperty(ref _startWithWindows, value) || _loading) return;
+            _services.Startup.SetEnabled(value);
+            Persist(s => s.StartWithWindows = value);
+        }
+    }
 
     private bool _startMinimized;
-    public bool StartMinimized { get => _startMinimized; set => SetProperty(ref _startMinimized, value); }
-
-    private bool _notifyOnStartup = true;
-    public bool NotifyOnStartup { get => _notifyOnStartup; set => SetProperty(ref _notifyOnStartup, value); }
-
-    private int _pollTimeoutSeconds = 25;
-    public int PollTimeoutSeconds { get => _pollTimeoutSeconds; set => SetProperty(ref _pollTimeoutSeconds, value); }
-
-    // ---- ui state ----
-    private bool _isBusy;
-    public bool IsBusy
+    public bool StartMinimized
     {
-        get => _isBusy;
-        private set { if (SetProperty(ref _isBusy, value)) OnPropertyChanged(nameof(IsNotBusy)); }
-    }
-    public bool IsNotBusy => !_isBusy;
-
-    private string _statusMessage = string.Empty;
-    public string StatusMessage { get => _statusMessage; private set => SetProperty(ref _statusMessage, value); }
-
-    // ---- commands ----
-    public AsyncRelayCommand ConnectCloudflareCommand { get; }
-    public AsyncRelayCommand TestTelegramCommand { get; }
-    public RelayCommand SaveCommand { get; }
-
-    private void LoadFromSettings()
-    {
-        var s = _services.Settings.Current;
-        CloudflareApiToken = s.CloudflareApiToken;
-        WorkerName = string.IsNullOrWhiteSpace(s.WorkerName) ? "soul-remote-proxy" : s.WorkerName;
-        ProxySecret = s.ProxySecret;
-        WorkerUrl = s.WorkerUrl;
-        TelegramBotToken = s.TelegramBotToken;
-        AllowShellCommands = s.AllowShellCommands;
-        AutoStartBot = s.AutoStartBot;
-        StartMinimized = s.StartMinimized;
-        NotifyOnStartup = s.NotifyOnStartup;
-        PollTimeoutSeconds = s.PollTimeoutSeconds <= 0 ? 25 : s.PollTimeoutSeconds;
-        _startWithWindows = _services.Startup.IsEnabled();
-        OnPropertyChanged(nameof(StartWithWindows));
+        get => _startMinimized;
+        set { if (SetProperty(ref _startMinimized, value)) Persist(s => s.StartMinimized = value); }
     }
 
-    private async Task ConnectCloudflareAsync()
+    private bool _autoStartBot;
+    public bool AutoStartBot
     {
-        if (string.IsNullOrWhiteSpace(CloudflareApiToken))
+        get => _autoStartBot;
+        set { if (SetProperty(ref _autoStartBot, value)) Persist(s => s.AutoStartBot = value); }
+    }
+
+    private bool _notifyOnStartup;
+    public bool NotifyOnStartup
+    {
+        get => _notifyOnStartup;
+        set { if (SetProperty(ref _notifyOnStartup, value)) Persist(s => s.NotifyOnStartup = value); }
+    }
+
+    private bool _allowShellCommands;
+    public bool AllowShellCommands
+    {
+        get => _allowShellCommands;
+        set { if (SetProperty(ref _allowShellCommands, value)) Persist(s => s.AllowShellCommands = value); }
+    }
+
+    private bool _allowFileAccess;
+    public bool AllowFileAccess
+    {
+        get => _allowFileAccess;
+        set { if (SetProperty(ref _allowFileAccess, value)) Persist(s => s.AllowFileAccess = value); }
+    }
+
+    private bool _reduceMotion;
+    public bool ReduceMotion
+    {
+        get => _reduceMotion;
+        set { if (SetProperty(ref _reduceMotion, value)) Persist(s => s.ReduceMotion = value); }
+    }
+
+    private int _pollTimeoutSeconds;
+    public int PollTimeoutSeconds
+    {
+        get => _pollTimeoutSeconds;
+        set
         {
-            CloudflareStatus = "Enter a Cloudflare API token first.";
-            return;
+            var clamped = Math.Clamp(value, 5, 50);
+            if (SetProperty(ref _pollTimeoutSeconds, clamped))
+                Persist(s => s.PollTimeoutSeconds = clamped);
         }
+    }
 
-        IsBusy = true;
-        CloudflareStatus = "Connecting and deploying worker…";
+    public string SettingsPath => _services.Settings.SettingsFilePath;
+
+    public RelayCommand OpenLogFolderCommand { get; }
+    public RelayCommand OpenSettingsFileCommand { get; }
+
+    private void OpenLogFolder()
+    {
+        var dir = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SoulRemote", "logs");
+        OpenPath(dir);
+    }
+
+    private void OpenSettingsFolder()
+    {
+        var dir = System.IO.Path.GetDirectoryName(SettingsPath);
+        if (!string.IsNullOrEmpty(dir))
+            OpenPath(dir);
+    }
+
+    private void OpenPath(string path)
+    {
         try
         {
-            if (string.IsNullOrWhiteSpace(ProxySecret))
-                ProxySecret = SecureRandom.Token(28);
-
-            // Persist inputs before the network call so nothing is lost.
-            var s = _services.Settings.Current;
-            s.CloudflareApiToken = CloudflareApiToken.Trim();
-            s.WorkerName = WorkerName.Trim();
-            s.ProxySecret = ProxySecret;
-            _services.Settings.Save(s);
-
-            var result = await _services.Cloudflare.ConnectAndDeployAsync(
-                CloudflareApiToken.Trim(), WorkerName.Trim(), ProxySecret,
-                _services.Settings.Current.CloudflareAccountId);
-
-            s = _services.Settings.Current;
-            s.CloudflareAccountId = result.AccountId;
-            s.CloudflareAccountName = result.AccountName;
-            s.WorkersDevSubdomain = result.Subdomain;
-            s.WorkerUrl = result.WorkerUrl;
-            _services.Settings.Save(s);
-
-            WorkerUrl = result.WorkerUrl;
-            CloudflareStatus = $"✓ Connected to '{result.AccountName}'. Worker: {result.WorkerUrl}";
+            System.IO.Directory.CreateDirectory(path);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
         }
         catch (Exception ex)
         {
-            CloudflareStatus = "✗ " + ex.Message;
+            _services.Log.Warning($"Could not open {path}: {ex.Message}");
         }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    private async Task TestTelegramAsync()
-    {
-        if (string.IsNullOrWhiteSpace(TelegramBotToken))
-        {
-            TelegramStatus = "Enter the Telegram bot token first.";
-            return;
-        }
-        if (!IsCloudflareConnected)
-        {
-            TelegramStatus = "Connect Cloudflare first.";
-            return;
-        }
-
-        IsBusy = true;
-        TelegramStatus = "Checking bot through the proxy…";
-        try
-        {
-            // Save token first, then verify via getMe through the worker.
-            var s = _services.Settings.Current;
-            s.TelegramBotToken = TelegramBotToken.Trim();
-            _services.Settings.Save(s);
-
-            _services.Telegram.Configure(_services.Settings.Current.WorkerUrl,
-                TelegramBotToken.Trim(), _services.Settings.Current.ProxySecret);
-            var me = await _services.Telegram.GetMeAsync();
-
-            s = _services.Settings.Current;
-            s.TelegramBotUsername = me.Username ?? string.Empty;
-            _services.Settings.Save(s);
-
-            TelegramStatus = $"✓ Bot OK: @{me.Username} ({me.FirstName}).";
-        }
-        catch (Exception ex)
-        {
-            TelegramStatus = "✗ " + ex.Message;
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    private void Save()
-    {
-        var s = _services.Settings.Current;
-        s.CloudflareApiToken = CloudflareApiToken.Trim();
-        s.WorkerName = WorkerName.Trim();
-        s.ProxySecret = ProxySecret;
-        s.WorkerUrl = WorkerUrl;
-        s.TelegramBotToken = TelegramBotToken.Trim();
-        s.AllowShellCommands = AllowShellCommands;
-        s.AutoStartBot = AutoStartBot;
-        s.StartMinimized = StartMinimized;
-        s.NotifyOnStartup = NotifyOnStartup;
-        s.PollTimeoutSeconds = Math.Clamp(PollTimeoutSeconds, 5, 50);
-        s.StartWithWindows = StartWithWindows;
-        _services.Settings.Save(s);
-
-        _services.Startup.SetEnabled(StartWithWindows);
-
-        StatusMessage = $"Settings saved at {DateTime.Now:HH:mm:ss}.";
     }
 }

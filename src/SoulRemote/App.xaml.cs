@@ -11,7 +11,7 @@ public partial class App : Application
     private static Mutex? _singleInstanceMutex;
     private AppServices? _services;
     private TrayIconManager? _tray;
-    private MainViewModel? _mainViewModel;
+    private ShellViewModel? _shell;
 
     public static AppServices Services =>
         ((App)Current)._services ?? throw new InvalidOperationException("Services not initialized.");
@@ -49,9 +49,9 @@ public partial class App : Application
         _services = new AppServices();
         _services.Log.Info("Soul Remote starting...");
 
-        _mainViewModel = new MainViewModel(_services);
+        _shell = new ShellViewModel(_services);
 
-        var window = new MainWindow { DataContext = _mainViewModel };
+        var window = new MainWindow { DataContext = _shell };
         MainWindow = window;
 
         _tray = new TrayIconManager(window, _services, () => ExplicitShutdown());
@@ -75,7 +75,7 @@ public partial class App : Application
             _services.Settings.Current.HasCloudflare &&
             _services.Settings.Current.HasTelegram)
         {
-            _ = _mainViewModel.Dashboard.AutoStartAsync();
+            _ = _shell.Dashboard.AutoStartAsync();
         }
     }
 

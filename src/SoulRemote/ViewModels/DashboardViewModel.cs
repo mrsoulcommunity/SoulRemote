@@ -1,10 +1,14 @@
 using System.Windows;
-using System.Windows.Media;
+using SoulRemote.Models;
 using SoulRemote.Services;
 using SoulRemote.Services.Security;
 
 namespace SoulRemote.ViewModels;
 
+/// <summary>
+/// The operations view: the live relay chain, who is allowed to drive it, and the
+/// controls you reach for from the machine itself.
+/// </summary>
 public sealed class DashboardViewModel : ViewModelBase
 {
     private readonly AppServices _services;
@@ -14,59 +18,98 @@ public sealed class DashboardViewModel : ViewModelBase
         _services = services;
 
         StartCommand = new AsyncRelayCommand(StartAsync, () => !_services.Bot.IsRunning);
-        StopCommand = new AsyncRelayCommand(StopAsync, () => _services.Bot.IsRunning);
-        RegeneratePairingCommand = new RelayCommand(() => GeneratePairingCode());
-        CopyPairingCommand = new RelayCommand(() =>
-        {
-            try { Clipboard.SetText(PairingCode); } catch { /* clipboard may be busy */ }
-        });
-        ClearAuthorizedCommand = new RelayCommand(ClearAuthorized);
-        RefreshCommand = new RelayCommand(RefreshAll);
+        StopCommand = new AsyncRelayCommand(() => _services.Bot.StopAsync(), () => _services.Bot.IsRunning);
+        NewCodeCommand = new RelayCommand(GeneratePairingCode);
+        CopyCodeCommand = new RelayCommand(CopyPairingCode);
+        RevokeAllCommand = new RelayCommand(RevokeAll);
+        LockCommand = new RelayCommand(() => Run(() => _services.System.Lock()));
+        TestMessageCommand = new AsyncRelayCommand(SendTestMessageAsync, () => _services.Bot.IsRunning);
 
         _services.Bot.StateChanged += OnBotStateChanged;
         _services.Router.ChatAuthorized += OnChatAuthorized;
+        _services.Router.CommandHandled += OnCommandHandled;
 
         GeneratePairingCode();
-        RefreshAll();
+        Refresh();
     }
 
-    // ---- status ----
-    private string _statusText = "● Offline";
-    public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
+    // ---- relay chain ----
 
-    private System.Windows.Media.Brush _statusColor = new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x6B));
-    public System.Windows.Media.Brush StatusColor { get => _statusColor; private set => SetProperty(ref _statusColor, value); }
+    private LinkState _pcState = LinkState.Online;
+    public LinkState PcState { get => _pcState; private set => SetProperty(ref _pcState, value); }
 
-    private string _detail = string.Empty;
-    public string Detail { get => _detail; private set => SetProperty(ref _detail, value); }
+    private LinkState _edgeState = LinkState.Idle;
+    public LinkState EdgeState { get => _edgeState; private set => SetProperty(ref _edgeState, value); }
 
-    public string MachineName => Environment.MachineName;
+    private LinkState _telegramState = LinkState.Idle;
+    public LinkState TelegramState { get => _telegramState; private set => SetProperty(ref _telegramState, value); }
 
-    private string _botUsername = "—";
-    public string BotUsername { get => _botUsername; private set => SetProperty(ref _botUsername, value); }
+    private bool _edgeLive;
+    public bool EdgeLive { get => _edgeLive; private set => SetProperty(ref _edgeLive, value); }
 
-    private string _workerUrl = "—";
-    public string WorkerUrl { get => _workerUrl; private set => SetProperty(ref _workerUrl, value); }
+    private bool _telegramLive;
+    public bool TelegramLive { get => _telegramLive; private set => SetProperty(ref _telegramLive, value); }
+
+    public string PcDetail => Environment.MachineName;
+
+    private string _edgeDetail = "not deployed";
+    public string EdgeDetail { get => _edgeDetail; private set => SetProperty(ref _edgeDetail, value); }
+
+    private string _telegramDetail = "no bot";
+    public string TelegramDetail { get => _telegramDetail; private set => SetProperty(ref _telegramDetail, value); }
+
+    public bool AnimationsEnabled => _services.Settings.Current.ReduceMotion == false;
+
+    // ---- headline ----
+
+    private string _headline = "Relay offline";
+    public string Headline { get => _headline; private set => SetProperty(ref _headline, value); }
+
+    private string _subhead = "Connect Cloudflare and Telegram to start.";
+    public string Subhead { get => _subhead; private set => SetProperty(ref _subhead, value); }
+
+    private LinkState _overall = LinkState.Idle;
+    public LinkState Overall { get => _overall; private set => SetProperty(ref _overall, value); }
+
+    // ---- telemetry ----
+
+    private string _uptime = "—";
+    public string Uptime { get => _uptime; private set => SetProperty(ref _uptime, value); }
+
+    private int _commandCount;
+    public int CommandCount { get => _commandCount; private set => SetProperty(ref _commandCount, value); }
+
+    private string _lastCommand = "—";
+    public string LastCommand { get => _lastCommand; private set => SetProperty(ref _lastCommand, value); }
+
+    private int _chatCount;
+    public int ChatCount { get => _chatCount; private set => SetProperty(ref _chatCount, value); }
+
+    private string _chatList = string.Empty;
+    public string ChatList { get => _chatList; private set => SetProperty(ref _chatList, value); }
 
     // ---- pairing ----
+
     private string _pairingCode = string.Empty;
     public string PairingCode { get => _pairingCode; private set => SetProperty(ref _pairingCode, value); }
 
-    private string _authorizedSummary = string.Empty;
-    public string AuthorizedSummary { get => _authorizedSummary; private set => SetProperty(ref _authorizedSummary, value); }
+    private string _botHandle = "—";
+    public string BotHandle { get => _botHandle; private set => SetProperty(ref _botHandle, value); }
 
     // ---- commands ----
+
     public AsyncRelayCommand StartCommand { get; }
     public AsyncRelayCommand StopCommand { get; }
-    public RelayCommand RegeneratePairingCommand { get; }
-    public RelayCommand CopyPairingCommand { get; }
-    public RelayCommand ClearAuthorizedCommand { get; }
-    public RelayCommand RefreshCommand { get; }
+    public RelayCommand NewCodeCommand { get; }
+    public RelayCommand CopyCodeCommand { get; }
+    public RelayCommand RevokeAllCommand { get; }
+    public RelayCommand LockCommand { get; }
+    public AsyncRelayCommand TestMessageCommand { get; }
 
     public async Task AutoStartAsync()
     {
-        try { await StartAsync(); }
-        catch { /* surfaced in log/status */ }
+        try { await _services.Bot.StartAsync(); }
+        catch { /* surfaced through state + logs */ }
     }
 
     private async Task StartAsync()
@@ -77,11 +120,33 @@ public sealed class DashboardViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Detail = ex.Message;
+            Subhead = ex.Message;
         }
     }
 
-    private async Task StopAsync() => await _services.Bot.StopAsync();
+    private async Task SendTestMessageAsync()
+    {
+        var chats = _services.Settings.Current.AuthorizedChatIds.ToArray();
+        if (chats.Length == 0)
+        {
+            Subhead = "Pair a Telegram chat first — send /pair with the code below.";
+            return;
+        }
+        foreach (var chat in chats)
+        {
+            try
+            {
+                await _services.Telegram.SendMessageAsync(chat,
+                    $"🛰 Test from <b>{TextUtil.Html(Environment.MachineName)}</b> — the relay is working.");
+            }
+            catch (Exception ex)
+            {
+                Subhead = $"Test message failed: {ex.Message}";
+                return;
+            }
+        }
+        Subhead = "Test message delivered.";
+    }
 
     private void GeneratePairingCode()
     {
@@ -89,84 +154,111 @@ public sealed class DashboardViewModel : ViewModelBase
         _services.Router.PairingCode = PairingCode;
     }
 
-    private void ClearAuthorized()
+    private void CopyPairingCode()
     {
-        var result = MessageBox.Show("Remove all authorized Telegram chats?",
+        try { Clipboard.SetText($"/pair {PairingCode}"); }
+        catch { /* the clipboard can be locked by another app */ }
+    }
+
+    private void RevokeAll()
+    {
+        var answer = MessageBox.Show(
+            "Revoke every paired Telegram chat? They will need a new pairing code to control this machine.",
             "Soul Remote", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (result != MessageBoxResult.Yes) return;
-        // Clone before mutating: the poll-loop thread reads the live AuthorizedChatIds list.
+        if (answer != MessageBoxResult.Yes)
+            return;
+
         var s = _services.Settings.Current.Clone();
         s.AuthorizedChatIds.Clear();
         _services.Settings.Save(s);
-        RefreshAll();
+        Refresh();
     }
 
-    private void RefreshAll()
+    private void Run(Func<string> action)
+    {
+        try { Subhead = action(); }
+        catch (Exception ex) { Subhead = ex.Message; }
+    }
+
+    private void OnChatAuthorized(long chatId) => UiThread.Post(() =>
+    {
+        GeneratePairingCode();
+        Refresh();
+    });
+
+    private void OnCommandHandled(string command) => UiThread.Post(() =>
+    {
+        CommandCount = _services.Router.CommandsHandled;
+        LastCommand = command;
+    });
+
+    private void OnBotStateChanged() => UiThread.Post(Refresh);
+
+    private void Refresh()
     {
         var s = _services.Settings.Current;
-        WorkerUrl = string.IsNullOrEmpty(s.WorkerUrl) ? "—" : s.WorkerUrl;
-        BotUsername = string.IsNullOrEmpty(s.TelegramBotUsername) ? "—" : "@" + s.TelegramBotUsername;
-        var ids = s.AuthorizedChatIds.ToArray(); // snapshot; list may be swapped from the poll thread
-        AuthorizedSummary = ids.Length == 0
-            ? "No chats linked yet — send the pairing code from Telegram."
-            : $"{ids.Length} chat(s) linked: {string.Join(", ", ids)}";
-        UpdateStatus();
-    }
+        var running = _services.Bot.State == BotState.Running;
+        var starting = _services.Bot.State == BotState.Starting;
+        var fault = _services.Bot.State == BotState.Error;
 
-    private void OnChatAuthorized(long chatId) => RunOnUi(() =>
-    {
-        // The router consumes the code on a successful pair; issue a fresh one for the next chat.
-        GeneratePairingCode();
-        RefreshAll();
-    });
+        // Edge hop: deployed at all, and carrying traffic while the relay runs.
+        EdgeState = !s.HasCloudflare ? LinkState.Idle
+            : fault ? LinkState.Fault
+            : starting ? LinkState.Working
+            : running ? LinkState.Online
+            : LinkState.Idle;
 
-    private void OnBotStateChanged() => RunOnUi(() =>
-    {
-        UpdateStatus();
-        if (!string.IsNullOrEmpty(_services.Bot.BotUsername))
-            BotUsername = "@" + _services.Bot.BotUsername;
-    });
+        TelegramState = !s.HasTelegram ? LinkState.Idle
+            : fault ? LinkState.Fault
+            : starting ? LinkState.Working
+            : running ? LinkState.Online
+            : LinkState.Idle;
 
-    private void UpdateStatus()
-    {
-        switch (_services.Bot.State)
+        PcState = LinkState.Online;
+        EdgeLive = running;
+        TelegramLive = running;
+
+        EdgeDetail = string.IsNullOrEmpty(s.WorkerUrl)
+            ? "not deployed"
+            : s.WorkerUrl.Replace("https://", string.Empty);
+        TelegramDetail = string.IsNullOrEmpty(s.TelegramBotUsername) ? "no bot" : "@" + s.TelegramBotUsername;
+        BotHandle = string.IsNullOrEmpty(s.TelegramBotUsername) ? "—" : "@" + s.TelegramBotUsername;
+
+        var ids = s.AuthorizedChatIds.ToArray();
+        ChatCount = ids.Length;
+        ChatList = ids.Length == 0 ? "No chats paired yet" : string.Join("  ·  ", ids);
+
+        CommandCount = _services.Router.CommandsHandled;
+        Uptime = TextUtil.HumanDuration(TimeSpan.FromMilliseconds(Environment.TickCount64));
+        OnPropertyChanged(nameof(AnimationsEnabled));
+
+        if (running)
         {
-            case BotState.Running:
-                StatusText = "● Online";
-                StatusColor = MakeBrush(0x3D, 0xD6, 0x8C);
-                Detail = _services.Bot.LastError is { Length: > 0 } err ? $"Warning: {err}" : "Listening for Telegram commands.";
-                break;
-            case BotState.Starting:
-                StatusText = "● Starting…";
-                StatusColor = MakeBrush(0xF5, 0xB9, 0x42);
-                Detail = "Connecting through Cloudflare…";
-                break;
-            case BotState.Error:
-                StatusText = "● Error";
-                StatusColor = MakeBrush(0xFF, 0x6B, 0x6B);
-                Detail = _services.Bot.LastError ?? "Unknown error.";
-                break;
-            default:
-                StatusText = "● Offline";
-                StatusColor = MakeBrush(0xFF, 0x6B, 0x6B);
-                Detail = "Bot is stopped.";
-                break;
+            Overall = LinkState.Online;
+            Headline = "Relay online";
+            Subhead = _services.Bot.LastError is { Length: > 0 } warn
+                ? $"Listening, with a warning: {warn}"
+                : "Listening for commands from your paired chats.";
         }
-    }
-
-    private static SolidColorBrush MakeBrush(byte r, byte g, byte b)
-    {
-        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
-        brush.Freeze();
-        return brush;
-    }
-
-    private static void RunOnUi(Action action)
-    {
-        var dispatcher = Application.Current?.Dispatcher;
-        if (dispatcher is not null && !dispatcher.CheckAccess())
-            dispatcher.BeginInvoke(action);
+        else if (starting)
+        {
+            Overall = LinkState.Working;
+            Headline = "Connecting";
+            Subhead = "Bringing the relay up through Cloudflare…";
+        }
+        else if (fault)
+        {
+            Overall = LinkState.Fault;
+            Headline = "Link fault";
+            Subhead = _services.Bot.LastError ?? "The relay stopped unexpectedly.";
+        }
         else
-            action();
+        {
+            Overall = LinkState.Idle;
+            Headline = "Relay offline";
+            Subhead = s.HasCloudflare && s.HasTelegram
+                ? "Press Start relay to begin listening."
+                : "Connect Cloudflare and Telegram to start.";
+        }
     }
 }

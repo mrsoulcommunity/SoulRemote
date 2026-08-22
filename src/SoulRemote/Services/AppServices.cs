@@ -16,6 +16,7 @@ public sealed class AppServices
     public IStartupManager Startup { get; }
     public CommandRouter Router { get; }
     public BotEngine Bot { get; }
+    public ConnectionOrchestrator Orchestrator { get; }
 
     public AppServices()
     {
@@ -32,5 +33,6 @@ public sealed class AppServices
 
         Router = new CommandRouter(Settings, Telegram, System, Screenshot, Info, Log);
         Bot = new BotEngine(Settings, Telegram, Router, Log);
+        Orchestrator = new ConnectionOrchestrator(Settings, Cloudflare, Telegram, Bot, Log);
     }
 }

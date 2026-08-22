@@ -56,6 +56,9 @@ public sealed class AppSettings
     /// <summary>Long-poll timeout (seconds) for Telegram getUpdates.</summary>
     public int PollTimeoutSeconds { get; set; } = 25;
 
+    /// <summary>Stops the relay-line animation for users who prefer a still interface.</summary>
+    public bool ReduceMotion { get; set; } = false;
+
     [JsonIgnore]
     public bool HasCloudflare => !string.IsNullOrWhiteSpace(CloudflareApiToken) && !string.IsNullOrWhiteSpace(WorkerUrl);
 
@@ -83,6 +86,7 @@ public sealed class AppSettings
             StartMinimized = StartMinimized,
             NotifyOnStartup = NotifyOnStartup,
             PollTimeoutSeconds = PollTimeoutSeconds,
+            ReduceMotion = ReduceMotion,
         };
     }
 }

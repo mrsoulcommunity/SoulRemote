@@ -37,6 +37,14 @@ public sealed class CommandRouter
     /// <summary>Raised (on a background thread) when a new chat is authorized via pairing.</summary>
     public event Action<long>? ChatAuthorized;
 
+    /// <summary>Raised (on a background thread) after each accepted command, with its name.</summary>
+    public event Action<string>? CommandHandled;
+
+    /// <summary>Total commands executed since the app started; shown as telemetry.</summary>
+    public int CommandsHandled => _commandsHandled;
+
+    private int _commandsHandled;
+
     public CommandRouter(
         ISettingsService settings, ITelegramClient telegram, ISystemControlService system,
         IScreenshotService screenshot, ISystemInfoService info, ILogService log)
@@ -92,6 +100,8 @@ public sealed class CommandRouter
         }
 
         _log.Info($"Command '{cmd}' from chat {chatId}.");
+        Interlocked.Increment(ref _commandsHandled);
+        CommandHandled?.Invoke("/" + cmd);
 
         switch (cmd)
         {
@@ -202,6 +212,8 @@ public sealed class CommandRouter
 
         await _telegram.AnswerCallbackAsync(cb.Id, null, ct);
         _log.Info($"Callback '{data}' from chat {chatId}.");
+        Interlocked.Increment(ref _commandsHandled);
+        CommandHandled?.Invoke(data);
 
         var (kind, value) = ParseCallback(data);
         switch (kind)

@@ -1,0 +1,78 @@
+<!--
+    Soul Remote — palette.
+
+    The app is a control console for a signal path (this PC -> Cloudflare edge ->
+    Telegram), so colour is state, never decoration. Each hue means exactly one
+    thing and is used nowhere else:
+
+      signal   live traffic / healthy link
+      relay    the Cloudflare edge hop
+      standby  working, waiting, needs attention
+      fault    broken link
+
+    Grounds are a deep blue-slate rather than neutral black so the signal teal and
+    relay violet read as emitted light against them.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ===== Grounds ===== -->
+    <Color x:Key="VoidColor">#FF0B0F17</Color>
+    <Color x:Key="RailColor">#FF0E1420</Color>
+    <Color x:Key="DeckColor">#FF121826</Color>
+    <Color x:Key="DeckRaisedColor">#FF182031</Color>
+    <Color x:Key="LineColor">#FF1F2A3C</Color>
+    <Color x:Key="LineSoftColor">#FF161E2C</Color>
+
+    <!-- ===== State hues ===== -->
+    <Color x:Key="SignalColor">#FF35E0C8</Color>
+    <Color x:Key="SignalDeepColor">#FF15A896</Color>
+    <Color x:Key="RelayColor">#FF7C6BFF</Color>
+    <Color x:Key="RelayDeepColor">#FF5A47E0</Color>
+    <Color x:Key="StandbyColor">#FFF2B441</Color>
+    <Color x:Key="FaultColor">#FFFF5A6E</Color>
+
+    <!-- ===== Ink ===== -->
+    <Color x:Key="InkColor">#FFE8EDF7</Color>
+    <Color x:Key="InkDimColor">#FF8A97AD</Color>
+    <Color x:Key="InkFaintColor">#FF5A6679</Color>
+
+    <!-- ===== Brushes ===== -->
+    <SolidColorBrush x:Key="VoidBrush" Color="{StaticResource VoidColor}" />
+    <SolidColorBrush x:Key="RailBrush" Color="{StaticResource RailColor}" />
+    <SolidColorBrush x:Key="DeckBrush" Color="{StaticResource DeckColor}" />
+    <SolidColorBrush x:Key="DeckRaisedBrush" Color="{StaticResource DeckRaisedColor}" />
+    <SolidColorBrush x:Key="LineBrush" Color="{StaticResource LineColor}" />
+    <SolidColorBrush x:Key="LineSoftBrush" Color="{StaticResource LineSoftColor}" />
+
+    <SolidColorBrush x:Key="SignalBrush" Color="{StaticResource SignalColor}" />
+    <SolidColorBrush x:Key="SignalDeepBrush" Color="{StaticResource SignalDeepColor}" />
+    <SolidColorBrush x:Key="RelayBrush" Color="{StaticResource RelayColor}" />
+    <SolidColorBrush x:Key="StandbyBrush" Color="{StaticResource StandbyColor}" />
+    <SolidColorBrush x:Key="FaultBrush" Color="{StaticResource FaultColor}" />
+
+    <SolidColorBrush x:Key="InkBrush" Color="{StaticResource InkColor}" />
+    <SolidColorBrush x:Key="InkDimBrush" Color="{StaticResource InkDimColor}" />
+    <SolidColorBrush x:Key="InkFaintBrush" Color="{StaticResource InkFaintColor}" />
+
+    <!-- Translucent washes used for badges and selected states. -->
+    <SolidColorBrush x:Key="SignalWashBrush" Color="#2635E0C8" />
+    <SolidColorBrush x:Key="RelayWashBrush" Color="#267C6BFF" />
+    <SolidColorBrush x:Key="StandbyWashBrush" Color="#26F2B441" />
+    <SolidColorBrush x:Key="FaultWashBrush" Color="#26FF5A6E" />
+    <SolidColorBrush x:Key="HoverWashBrush" Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="PressWashBrush" Color="#0AFFFFFF" />
+
+    <!-- The conduit gradient: energy travelling from the edge hop into live signal. -->
+    <LinearGradientBrush x:Key="ConduitBrush" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="{StaticResource RelayColor}" Offset="0" />
+        <GradientStop Color="{StaticResource SignalColor}" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="RailEdgeBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#007C6BFF" Offset="0" />
+        <GradientStop Color="#807C6BFF" Offset="0.5" />
+        <GradientStop Color="#0035E0C8" Offset="1" />
+    </LinearGradientBrush>
+
+</ResourceDictionary>

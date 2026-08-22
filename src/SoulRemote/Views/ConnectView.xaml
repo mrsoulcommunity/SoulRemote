@@ -1,0 +1,134 @@
+<UserControl x:Class="SoulRemote.Views.ConnectView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:SoulRemote.ViewModels">
+
+    <UserControl.Resources>
+        <vm:StepStatusToBrushConverter x:Key="StepBrush" />
+        <vm:StepStatusToGlyphConverter x:Key="StepGlyph" />
+        <vm:LinkStateToBrushConverter x:Key="StateBrush" />
+        <vm:TextToVisibilityConverter x:Key="HasText" />
+        <vm:BoolToVisibilityConverter x:Key="BoolToVis" />
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="32,10,32,32">
+        <StackPanel MaxWidth="900">
+
+            <TextBlock Text="Bring the relay up" Style="{StaticResource Title}" />
+            <TextBlock Style="{StaticResource BodyDim}" Margin="0,6,0,0" MaxWidth="620" HorizontalAlignment="Left"
+                       Text="Telegram is unreachable on some networks, so Soul Remote routes every request through a small worker on Cloudflare's edge. Paste both tokens once and Connect does the rest: deploy the worker, publish its route, then sign the bot in through it." />
+
+            <Grid Margin="0,26,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="330" />
+                </Grid.ColumnDefinitions>
+
+                <!-- ===== Inputs ===== -->
+                <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="CLOUDFLARE" Style="{StaticResource Eyebrow}"
+                                           Foreground="{StaticResource RelayBrush}" />
+                                <TextBlock Text="the bridge" Style="{StaticResource DataDim}" Margin="10,0,0,0" />
+                            </StackPanel>
+
+                            <TextBlock Text="API token" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                            <TextBox Style="{StaticResource FieldBox}"
+                                     Text="{Binding CloudflareToken, UpdateSourceTrigger=PropertyChanged}"
+                                     IsEnabled="{Binding IsIdle}" />
+                            <TextBlock Style="{StaticResource BodyDim}" Margin="0,8,0,0" FontSize="12"
+                                       Text="Create one with the &quot;Edit Cloudflare Workers&quot; template." />
+                            <Button Style="{StaticResource GhostButton}" Content="Open Cloudflare tokens"
+                                    HorizontalAlignment="Left" Margin="0,10,0,0"
+                                    Command="{Binding OpenCloudflareTokensCommand}" />
+
+                            <TextBlock Text="Worker name" Style="{StaticResource FieldLabel}" Margin="0,20,0,6" />
+                            <TextBox Style="{StaticResource FieldBox}"
+                                     Text="{Binding WorkerName, UpdateSourceTrigger=PropertyChanged}"
+                                     IsEnabled="{Binding IsIdle}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="TELEGRAM" Style="{StaticResource Eyebrow}"
+                                           Foreground="{StaticResource SignalBrush}" />
+                                <TextBlock Text="the remote" Style="{StaticResource DataDim}" Margin="10,0,0,0" />
+                            </StackPanel>
+
+                            <TextBlock Text="Bot token" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                            <TextBox Style="{StaticResource FieldBox}"
+                                     Text="{Binding TelegramToken, UpdateSourceTrigger=PropertyChanged}"
+                                     IsEnabled="{Binding IsIdle}" />
+                            <TextBlock Style="{StaticResource BodyDim}" Margin="0,8,0,0" FontSize="12"
+                                       Text="Ask @BotFather for /newbot, then paste the HTTP API token." />
+                            <Button Style="{StaticResource GhostButton}" Content="Open BotFather"
+                                    HorizontalAlignment="Left" Margin="0,10,0,0"
+                                    Command="{Binding OpenBotFatherCommand}" />
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <Button Style="{StaticResource PrimaryButton}" Content="Connect"
+                                Command="{Binding ConnectCommand}" MinWidth="150"
+                                Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}" />
+                        <Button Style="{StaticResource GhostButton}" Content="Cancel"
+                                Command="{Binding CancelCommand}" MinWidth="150"
+                                Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+
+                    <Border Style="{StaticResource CardInset}" Margin="0,14,0,0"
+                            Visibility="{Binding Message, Converter={StaticResource HasText}}">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="8" Height="8" VerticalAlignment="Top" Margin="0,5,10,0"
+                                     Fill="{Binding Outcome, Converter={StaticResource StateBrush}}" />
+                            <TextBlock Text="{Binding Message}" Style="{StaticResource Body}" MaxWidth="440" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- ===== Live pipeline ===== -->
+                <Border Grid.Column="1" Style="{StaticResource Card}" VerticalAlignment="Top">
+                    <StackPanel>
+                        <TextBlock Text="BRING-UP SEQUENCE" Style="{StaticResource Eyebrow}" />
+                        <ItemsControl ItemsSource="{Binding Steps}" Margin="0,16,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,0,0,14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="22" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding Status, Converter={StaticResource StepGlyph}}"
+                                                   Foreground="{Binding Status, Converter={StaticResource StepBrush}}"
+                                                   FontFamily="{StaticResource DataFont}" FontSize="14"
+                                                   FontWeight="Bold" VerticalAlignment="Top" />
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="{Binding Title}" Style="{StaticResource Body}" FontSize="12" />
+                                            <TextBlock Text="{Binding Detail}" Style="{StaticResource DataDim}"
+                                                       Margin="0,3,0,0" MaxWidth="260"
+                                                       Visibility="{Binding Detail, Converter={StaticResource HasText}}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Border Style="{StaticResource CardInset}" Margin="0,6,0,0"
+                                Visibility="{Binding WorkerUrl, Converter={StaticResource HasText}}">
+                            <StackPanel>
+                                <TextBlock Text="RELAY ENDPOINT" Style="{StaticResource Eyebrow}" />
+                                <TextBlock Text="{Binding WorkerUrl}" Style="{StaticResource Data}"
+                                           Foreground="{StaticResource SignalBrush}" Margin="0,6,0,0"
+                                           TextWrapping="Wrap" FontSize="11" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

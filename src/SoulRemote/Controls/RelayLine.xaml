@@ -1,0 +1,132 @@
+<!--
+    RelayLine — the signature element.
+
+    Soul Remote exists to hold open one path: this PC -> the Cloudflare edge ->
+    Telegram. That path is the product, so it is the hero of the dashboard and
+    the spine of the connection wizard. Each hop shows its own state, and a
+    packet travels along a conduit only while that conduit is actually carrying
+    traffic, so the animation reports something true rather than decorating.
+-->
+<UserControl x:Class="SoulRemote.Controls.RelayLine"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:SoulRemote.ViewModels"
+             x:Name="Root">
+
+    <UserControl.Resources>
+        <vm:LinkStateToBrushConverter x:Key="StateBrush" />
+
+        <!-- A node: fixed-width plate with a status lamp and a machine label. -->
+        <Style x:Key="NodePlate" TargetType="Border">
+            <Setter Property="Width" Value="132" />
+            <Setter Property="Height" Value="72" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Background" Value="{StaticResource DeckBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+        </Style>
+
+        <Style x:Key="Lamp" TargetType="Ellipse">
+            <Setter Property="Width" Value="9" />
+            <Setter Property="Height" Value="9" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="NodeLabel" TargetType="TextBlock" BasedOn="{StaticResource Eyebrow}">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,7,0,0" />
+            <Setter Property="Foreground" Value="{StaticResource InkDimBrush}" />
+        </Style>
+
+        <Style x:Key="NodeDetail" TargetType="TextBlock" BasedOn="{StaticResource DataDim}">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,8,0,0" />
+            <Setter Property="MaxWidth" Value="150" />
+            <Setter Property="FontSize" Value="10" />
+        </Style>
+
+        <!-- The travelling packet: only runs while the conduit is live. -->
+        <Style x:Key="Packet" TargetType="Ellipse">
+            <Setter Property="Width" Value="6" />
+            <Setter Property="Height" Value="6" />
+            <Setter Property="Fill" Value="{StaticResource SignalBrush}" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid HorizontalAlignment="Center">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ===== Hop 1: this machine ===== -->
+        <StackPanel Grid.Column="0" VerticalAlignment="Top">
+            <Border Style="{StaticResource NodePlate}"
+                    BorderBrush="{Binding PcState, ElementName=Root, Converter={StaticResource StateBrush}}">
+                <StackPanel VerticalAlignment="Center">
+                    <Ellipse Style="{StaticResource Lamp}"
+                             Fill="{Binding PcState, ElementName=Root, Converter={StaticResource StateBrush}}" />
+                    <TextBlock Style="{StaticResource NodeLabel}" Text="THIS PC" />
+                </StackPanel>
+            </Border>
+            <TextBlock Style="{StaticResource NodeDetail}" Text="{Binding PcDetail, ElementName=Root}" />
+        </StackPanel>
+
+        <!-- ===== Conduit 1 ===== -->
+        <Grid Grid.Column="1" Width="104" Height="72">
+            <Border Height="2" VerticalAlignment="Center" Background="{StaticResource LineBrush}" />
+            <Border x:Name="Conduit1" Height="2" VerticalAlignment="Center"
+                    Background="{StaticResource ConduitBrush}" Opacity="0" />
+            <Ellipse x:Name="Packet1" Style="{StaticResource Packet}">
+                <Ellipse.RenderTransform>
+                    <TranslateTransform x:Name="Packet1Move" X="0" />
+                </Ellipse.RenderTransform>
+            </Ellipse>
+        </Grid>
+
+        <!-- ===== Hop 2: the Cloudflare edge ===== -->
+        <StackPanel Grid.Column="2" VerticalAlignment="Top">
+            <Border Style="{StaticResource NodePlate}"
+                    BorderBrush="{Binding EdgeState, ElementName=Root, Converter={StaticResource StateBrush}}">
+                <StackPanel VerticalAlignment="Center">
+                    <Ellipse Style="{StaticResource Lamp}"
+                             Fill="{Binding EdgeState, ElementName=Root, Converter={StaticResource StateBrush}}" />
+                    <TextBlock Style="{StaticResource NodeLabel}" Text="CLOUDFLARE EDGE" />
+                </StackPanel>
+            </Border>
+            <TextBlock Style="{StaticResource NodeDetail}" Text="{Binding EdgeDetail, ElementName=Root}" />
+        </StackPanel>
+
+        <!-- ===== Conduit 2 ===== -->
+        <Grid Grid.Column="3" Width="104" Height="72">
+            <Border Height="2" VerticalAlignment="Center" Background="{StaticResource LineBrush}" />
+            <Border x:Name="Conduit2" Height="2" VerticalAlignment="Center"
+                    Background="{StaticResource ConduitBrush}" Opacity="0" />
+            <Ellipse x:Name="Packet2" Style="{StaticResource Packet}">
+                <Ellipse.RenderTransform>
+                    <TranslateTransform x:Name="Packet2Move" X="0" />
+                </Ellipse.RenderTransform>
+            </Ellipse>
+        </Grid>
+
+        <!-- ===== Hop 3: Telegram ===== -->
+        <StackPanel Grid.Column="4" VerticalAlignment="Top">
+            <Border Style="{StaticResource NodePlate}"
+                    BorderBrush="{Binding TelegramState, ElementName=Root, Converter={StaticResource StateBrush}}">
+                <StackPanel VerticalAlignment="Center">
+                    <Ellipse Style="{StaticResource Lamp}"
+                             Fill="{Binding TelegramState, ElementName=Root, Converter={StaticResource StateBrush}}" />
+                    <TextBlock Style="{StaticResource NodeLabel}" Text="TELEGRAM" />
+                </StackPanel>
+            </Border>
+            <TextBlock Style="{StaticResource NodeDetail}" Text="{Binding TelegramDetail, ElementName=Root}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

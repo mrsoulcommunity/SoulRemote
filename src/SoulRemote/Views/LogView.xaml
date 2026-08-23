@@ -7,6 +7,7 @@
 
     <UserControl.Resources>
         <vm:EqualsConverter x:Key="Equals" />
+        <vm:BoolToVisibilityConverter x:Key="BoolToVis" />
 
     </UserControl.Resources>
 
@@ -17,7 +18,10 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="{p:T ui.logs.title}" Style="{StaticResource Title}" />
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="{p:T ui.logs.title}" Style="{StaticResource Title}" />
+            <TextBlock Text="{p:T ui.logs.subtitle}" Style="{StaticResource BodyDim}" Margin="0,6,0,0" />
+        </StackPanel>
 
         <Grid Grid.Row="1" Margin="0,18,0,14">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
@@ -36,6 +40,11 @@
         </Grid>
 
         <Border Grid.Row="2" Style="{StaticResource Card}" Padding="8">
+          <Grid>
+            <!-- An empty list with no explanation reads as a broken page. -->
+            <TextBlock Text="{p:T ui.logs.empty}" Style="{StaticResource BodyDim}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,24"
+                       Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}" />
             <ListBox x:Name="LogList" ItemsSource="{Binding View}"
                      Background="Transparent" BorderThickness="0"
                      VirtualizingPanel.IsVirtualizing="True"
@@ -114,6 +123,7 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+          </Grid>
         </Border>
     </Grid>
 </UserControl>

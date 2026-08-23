@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
+using SoulRemote.Localization;
 using WinFormsScreen = System.Windows.Forms.Screen;
 
 namespace SoulRemote.Services;
@@ -29,7 +30,7 @@ public sealed class ScreenshotService : IScreenshotService
         // Bounding rectangle across every monitor (handles multi-monitor + negative origins).
         var screens = WinFormsScreen.AllScreens;
         if (screens.Length == 0)
-            throw new InvalidOperationException("No displays were found on this machine.");
+            throw new InvalidOperationException(Strings.Get("bot.capture.nodisplays"));
 
         int left = int.MaxValue, top = int.MaxValue, right = int.MinValue, bottom = int.MinValue;
         foreach (var s in screens)
@@ -53,7 +54,7 @@ public sealed class ScreenshotService : IScreenshotService
     private static ScreenCapture Capture(Rectangle bounds, string label, long maxPhotoBytes, int maxDimensionSum)
     {
         if (bounds.Width <= 0 || bounds.Height <= 0)
-            throw new InvalidOperationException("Invalid screen bounds for capture.");
+            throw new InvalidOperationException(Strings.Get("bot.capture.badbounds"));
 
         var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
 

@@ -255,6 +255,18 @@ public sealed class CommandRouterTests
     }
 
     [Fact]
+    public async Task A_prompt_always_offers_a_way_out()
+    {
+        var h = new Harness(s => s.AllowInputInjection = true);
+        await h.Tap(Owner, "i:type");
+
+        // Without this the chat is stuck with the prompt until it times out three
+        // minutes later, and the cancel branch is unreachable code.
+        Assert.Single(h.Telegram.Messages);
+        Assert.True(h.Telegram.Messages[0].HasKeyboard);
+    }
+
+    [Fact]
     public async Task Cancelling_a_prompt_releases_the_next_message()
     {
         var h = new Harness(s => s.AllowInputInjection = true);

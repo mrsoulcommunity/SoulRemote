@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Data;
@@ -22,10 +23,14 @@ public sealed class LogViewModel : ViewModelBase
         _services = services;
         View = CollectionViewSource.GetDefaultView(Entries);
         View.Filter = Matches;
+        ((INotifyCollectionChanged)Entries).CollectionChanged += (_, _) => OnPropertyChanged(nameof(IsEmpty));
 
         ClearCommand = new RelayCommand(Clear);
         SetFilterCommand = new RelayCommand(p => Filter = p as string ?? "all");
     }
+
+    /// <summary>Drives the empty-state message; an unexplained blank page reads as broken.</summary>
+    public bool IsEmpty => View.IsEmpty;
 
     private string _filter = "all";
     public string Filter
@@ -35,6 +40,7 @@ public sealed class LogViewModel : ViewModelBase
         {
             if (!SetProperty(ref _filter, value)) return;
             View.Refresh();
+            OnPropertyChanged(nameof(IsEmpty));
         }
     }
 

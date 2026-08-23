@@ -939,17 +939,22 @@ public sealed class CommandRouter
         await SendResultAsync(chatId, () => _system.OpenTarget(trimmed), ct).ConfigureAwait(false);
     }
 
-    /// <summary>Asks for a missing value, offering a way out of the prompt.</summary>
+    /// <summary>
+    /// Asks for a missing value, offering a way out of the prompt.
+    ///
+    /// A prompt with no exit stranded the chat until it timed out three minutes later,
+    /// and <c>BotMenu.CancelPrompt</c> existed but was never sent — the whole "x"
+    /// branch was unreachable. The button goes on the prompt itself rather than a
+    /// second message: reply markup is one object per message, and since pairing is
+    /// private-chat only, a force-reply's pre-aimed composer buys little compared with
+    /// a visible way to back out.
+    /// </summary>
     private async Task AskInChatAsync(long chatId, PromptKind kind, CancellationToken ct)
     {
         _prompts.Ask(chatId, kind);
-        await _telegram.SendWithMarkupAsync(chatId, ChatPrompts.PromptFor(kind),
-            new TgForceReply { Placeholder = ChatPrompts.PlaceholderFor(kind) }, ct)
-            .ConfigureAwait(false);
-        // A prompt with no exit strands the chat until it times out, so the way back
-        // is offered as its own message — force-reply cannot carry an inline keyboard.
-        await _telegram.SendMessageAsync(chatId, Strings.Get("bot.prompt.cancel.hint"),
-            BotMenu.CancelPrompt(), ct).ConfigureAwait(false);
+        var text = ChatPrompts.PromptFor(kind)
+                   + $"\n<i>{TextUtil.Html(ChatPrompts.PlaceholderFor(kind))}</i>";
+        await _telegram.SendMessageAsync(chatId, text, BotMenu.CancelPrompt(), ct).ConfigureAwait(false);
     }
 
     private async Task RunShellAsync(long chatId, string command, CancellationToken ct)

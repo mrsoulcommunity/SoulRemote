@@ -102,6 +102,8 @@ public static class Strings
         ["bot.capture.caption.desktop"] = ("🖼 Desktop — {0}", "🖼 دسکتاپ — {0}"),
         ["bot.capture.caption.monitor"] = ("🖼 Monitor {0} — {1}", "🖼 نمایشگر {0} — {1}"),
         ["bot.capture.failed"] = ("❌ Screenshot failed: {0}", "❌ گرفتن تصویر ناموفق بود: {0}"),
+        ["bot.capture.nodisplays"] = ("No displays were found on this machine.", "هیچ نمایشگری روی این رایانه پیدا نشد."),
+        ["bot.capture.badbounds"] = ("The screen area to capture is not valid.", "محدودهٔ تصویربرداری معتبر نیست."),
 
         // ================= Telegram bot: power =================
         ["bot.power.title"] = ("⚡ <b>Power</b>", "⚡ <b>روشن و خاموش</b>"),
@@ -181,7 +183,6 @@ public static class Strings
         ["bot.files.file"] = ("📄 {0}", "📄 {0}"),
         ["bot.files.receiving"] = ("📥 Receiving…", "📥 در حال دریافت…"),
         ["bot.files.stale"] = ("That listing has moved on — open the folder again.", "آن فهرست تازه نیست — پوشه را دوباره باز کنید."),
-        ["bot.files.roots"] = ("Pick a drive, or send a full path.", "یک درایو انتخاب کنید یا مسیر کامل بفرستید."),
 
         // ================= Telegram bot: shortcut bar =================
         ["bot.bar.menu"] = ("🎛 Menu", "🎛 منو"),
@@ -227,7 +228,6 @@ public static class Strings
                                     "🔒 اتصال را در چت خصوصی با بات انجام دهید، نه در گروه — اتصال یک گروه کنترل این رایانه را به همهٔ اعضا می‌دهد."),
         ["bot.pair.savefailed"] = ("⚠️ The pairing could not be saved on the PC. Check the Soul Remote window and try again.",
                                    "⚠️ اتصال روی رایانه ذخیره نشد. پنجرهٔ سول ریموت را ببینید و دوباره تلاش کنید."),
-        ["bot.prompt.cancel.hint"] = ("Send the value above, or:", "مقدار بالا را بفرستید، یا:"),
         ["bot.chatid"] = ("Your chat ID: <code>{0}</code>", "شناسهٔ چت شما: <code>{0}</code>"),
         ["bot.pong"] = ("🏓 pong", "🏓 پونگ"),
         ["bot.nothing"] = ("Nothing to do.", "کاری برای انجام نیست."),
@@ -448,16 +448,13 @@ public static class Strings
                                           "به‌محض اجرای برنامه شنیدن آغاز می‌شود تا رایانه پس از راه‌اندازی مجدد در دسترس باشد."),
         ["ui.settings.notify"] = ("Announce in Telegram when the relay comes online", "اعلام در تلگرام وقتی رله آنلاین می‌شود"),
         ["ui.settings.permissions"] = ("WHAT THE BOT MAY DO", "اختیارات بات"),
-        ["ui.settings.shell"] = ("Allow shell commands", "اجازهٔ اجرای دستور"),
         ["ui.settings.shell.hint"] = ("Lets a paired chat run any command on this PC. Leave off unless you need it.",
                                       "به چت متصل اجازه می‌دهد هر دستوری را روی این رایانه اجرا کند. تا وقتی لازم نیست خاموش بماند."),
-        ["ui.settings.files"] = ("Allow file access", "اجازهٔ دسترسی به فایل"),
         ["ui.settings.files.hint"] = ("Lets a paired chat browse folders, fetch files and open local paths.",
                                       "به چت متصل اجازه می‌دهد پوشه‌ها را مرور کند، فایل بگیرد و مسیرهای محلی را باز کند."),
         ["ui.settings.interface"] = ("INTERFACE", "رابط کاربری"),
         ["ui.settings.reducemotion"] = ("Reduce motion", "کاهش حرکت"),
         ["ui.settings.reducemotion.hint"] = ("Stops the relay line animating.", "انیمیشن خط رله را متوقف می‌کند."),
-        ["ui.settings.advanced"] = ("ADVANCED", "پیشرفته"),
         ["ui.settings.polltimeout"] = ("Long-poll timeout (seconds)", "مهلت long-poll (ثانیه)"),
         ["ui.settings.polltimeout.hint"] = ("How long each getUpdates call waits. 25 suits most networks; lower it on a flaky link.",
                                             "هر فراخوانی getUpdates چقدر منتظر بماند. ۲۵ برای بیشتر شبکه‌ها مناسب است؛ روی پیوند ناپایدار کمترش کنید."),

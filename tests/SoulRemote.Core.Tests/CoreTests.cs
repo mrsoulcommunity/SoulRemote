@@ -287,6 +287,34 @@ public sealed class BotMenuTests
         Assert.All(captions, c => Assert.Contains(c.Action, new[] { "menu", "shot", "lock", "power" }));
     }
 
+    /// <summary>
+    /// A key the catalogue does not know returns the key itself, which is how a typo
+    /// reaches a user: as "bot.menu.captrue" on a button. Rendering every screen in
+    /// both languages and looking for that shape catches it here instead.
+    /// </summary>
+    [Fact]
+    public void No_screen_renders_a_raw_string_key()
+    {
+        var keyish = new System.Text.RegularExpressions.Regex(@"^[a-z]+(\.[a-z]+)+$");
+        foreach (var language in Enum.GetValues<AppLanguage>())
+        {
+            Strings.Use(language);
+            foreach (var screen in AllScreens())
+            {
+                Assert.False(keyish.IsMatch(screen.Text.Trim()), $"screen text is a bare key: {screen.Text}");
+                foreach (var button in screen.Keyboard.InlineKeyboard.SelectMany(r => r))
+                    Assert.False(keyish.IsMatch(button.Text.Trim()), $"button caption is a bare key: {button.Text}");
+            }
+
+            foreach (var kind in Enum.GetValues<PromptKind>())
+            {
+                Assert.False(keyish.IsMatch(ChatPrompts.PromptFor(kind)));
+                Assert.False(keyish.IsMatch(ChatPrompts.PlaceholderFor(kind)));
+            }
+        }
+        Strings.Use(AppLanguage.English);
+    }
+
     private static IEnumerable<BotMenu.Screen> AllScreens()
     {
         yield return BotMenu.Home("PC", "status", true);
@@ -521,5 +549,102 @@ public sealed class WorkerScriptTests
         using var stream = assembly.GetManifestResourceStream(name)!;
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();
+    }
+}
+
+/// <summary>
+/// A settings file written by the version before this change must still load. Anyone
+/// upgrading has one, and losing their relay configuration on upgrade would be the
+/// worst possible outcome of a refactor.
+/// </summary>
+public sealed class LegacySettingsTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "soulremote-legacy-" + Guid.NewGuid().ToString("N"));
+
+    private string Path_ => Path.Combine(_dir, "settings.json");
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_dir, true); } catch { /* best effort */ }
+    }
+
+    private const string OldFormat = """
+    {
+      "CloudflareApiToken": "cf-token",
+      "CloudflareAccountId": "acct",
+      "CloudflareAccountName": "My Account",
+      "WorkerName": "soul-remote-proxy",
+      "WorkersDevSubdomain": "myname",
+      "WorkerUrl": "https://soul-remote-proxy.myname.workers.dev",
+      "ProxySecret": "shhh",
+      "TelegramBotToken": "123:ABC",
+      "TelegramBotUsername": "my_bot",
+      "AuthorizedChatIds": [ 6291445123, 884120993 ],
+      "AllowShellCommands": true,
+      "AllowFileAccess": false,
+      "StartWithWindows": true,
+      "AutoStartBot": true,
+      "StartMinimized": true,
+      "NotifyOnStartup": false,
+      "PollTimeoutSeconds": 30,
+      "ReduceMotion": true
+    }
+    """;
+
+    [Fact]
+    public void An_old_settings_file_loads_with_everything_intact()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path_, OldFormat);
+
+        var loaded = new SettingsService(new FakeLog(), NullSecretProtector.Instance, Path_).Load();
+
+        Assert.Equal("cf-token", loaded.CloudflareApiToken);
+        Assert.Equal("123:ABC", loaded.TelegramBotToken);
+        Assert.Equal("shhh", loaded.ProxySecret);
+        Assert.Equal("https://soul-remote-proxy.myname.workers.dev", loaded.WorkerUrl);
+        Assert.Equal(new[] { 6291445123L, 884120993L }, loaded.AuthorizedChatIds);
+        Assert.True(loaded.AllowShellCommands);
+        Assert.True(loaded.StartWithWindows);
+        Assert.True(loaded.AutoStartBot);
+        Assert.True(loaded.StartMinimized);
+        Assert.False(loaded.NotifyOnStartup);
+        Assert.Equal(30, loaded.PollTimeoutSeconds);
+        Assert.True(loaded.ReduceMotion);
+        Assert.True(loaded.HasCloudflare);
+        Assert.True(loaded.HasTelegram);
+    }
+
+    [Fact]
+    public void Fields_the_old_format_never_had_take_their_defaults()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path_, OldFormat);
+
+        var loaded = new SettingsService(new FakeLog(), NullSecretProtector.Instance, Path_).Load();
+
+        Assert.Equal(AppLanguage.English, loaded.LanguageOrDefault);
+        Assert.Equal(14, loaded.LogRetentionDays);
+        Assert.Empty(loaded.ChatNames);
+        Assert.Equal(string.Empty, loaded.DownloadFolder);
+        // Typing was open before this change and is gated now, so it must land off —
+        // the switch is the point, and defaulting it on for upgraders would erase it.
+        Assert.False(loaded.AllowInputInjection);
+    }
+
+    [Fact]
+    public void Saving_an_old_file_back_keeps_everything_and_adds_the_new_fields()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path_, OldFormat);
+
+        var service = new SettingsService(new FakeLog(), NullSecretProtector.Instance, Path_);
+        var loaded = service.Load();
+        Assert.True(service.Save(loaded));
+
+        var again = new SettingsService(new FakeLog(), NullSecretProtector.Instance, Path_).Load();
+        Assert.Equal("123:ABC", again.TelegramBotToken);
+        Assert.Equal(2, again.AuthorizedChatIds.Count);
+        Assert.Equal(30, again.PollTimeoutSeconds);
     }
 }

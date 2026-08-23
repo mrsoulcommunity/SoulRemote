@@ -25,6 +25,7 @@ reachable, so the bot keeps working.
 | **Media & audio** | Play/Pause, Next, Previous, Volume up/down, set volume 0–100, mute toggle |
 | **Processes** | List top processes, kill by name or PID |
 | **Input & clipboard** | Read/set the clipboard, type into the focused window, open a URL or file, speak text aloud |
+| **Files** | Browse folders, fetch a file to Telegram, send a file to the PC (opt‑in) |
 | **Advanced** | Run shell commands via `/cmd` (opt‑in), inline‑button menus |
 
 - ⚡ **One‑press bring‑up** — paste both tokens and press **Connect**: Soul Remote
@@ -39,6 +40,8 @@ reachable, so the bot keeps working.
   constant time), and a shared secret so the deployed worker is not an open relay.
 - 🧊 **Runs in the tray** — keeps working in the background; optional start with
   Windows and auto‑start of the bot.
+- 🌍 **Speaks Persian** — the whole bot *and* the whole desktop, switchable from
+  either side, with the window mirrored right‑to‑left.
 - 🧱 **Native & dependency‑light** — WPF on .NET 8, no third‑party NuGet packages.
 - 🪶 **Stable polling engine** — long‑polling with automatic reconnect/backoff,
   startup‑backlog draining, and confirmation prompts for destructive actions.
@@ -100,23 +103,42 @@ Full walkthrough: [`docs/SETUP.md`](docs/SETUP.md).
 git clone https://github.com/mrsoulcommunity/SoulRemote.git
 cd SoulRemote
 dotnet build SoulRemote.sln -c Release
-# or a single self-contained exe:
+dotnet test SoulRemote.sln -c Release
+
+# a single self-contained exe:
 dotnet publish src/SoulRemote/SoulRemote.csproj -c Release -r win-x64 `
   --self-contained true -p:PublishSingleFile=true -o publish
 ```
 
-Requires the **.NET 8 SDK** (Windows). CI builds the same on every push
-(`.github/workflows/build.yml`) and uploads a ready `SoulRemote.exe` artifact.
+Requires the **.NET 8 SDK**. The desktop app targets `net8.0-windows`, but
+`SoulRemote.Core` and the test suite are plain `net8.0` — so `dotnet test` runs
+anywhere, and the app itself can be built off Windows with
+`-p:EnableWindowsTargeting=true`.
+
+CI builds and tests on every push (`.github/workflows/build.yml`); pushing a
+`v*` tag publishes a release with the exe and its SHA‑256.
 
 ---
 
 ## 🔒 Security notes
 
 - Secrets (Cloudflare token, bot token, proxy secret) are stored **encrypted**
-  under `%APPDATA%\SoulRemote\settings.json` via DPAPI (current user only).
-- Only **paired chat IDs** can run commands; everyone else is rejected.
-- The worker enforces an `X-Proxy-Secret` header so a leaked URL can't be abused.
-- `/cmd` (arbitrary shell) is **disabled** until you explicitly enable it.
+  under `%APPDATA%\SoulRemote\settings.json` via DPAPI (current user only). A value
+  that cannot be decrypted is left alone rather than overwritten, so a token is
+  never destroyed just because Windows could not read it once.
+- Only **paired chat IDs** can run commands; everyone else is rejected. The
+  pairing code is single‑use, expires after ten minutes, is compared in constant
+  time, and is **only accepted in a private chat** — pairing a group would hand
+  control of the PC to every member of it.
+- The worker enforces an `X-Proxy-Secret` header, **refuses everything when no
+  secret is bound**, compares it in constant time, and relays only Bot API paths.
+- Three capabilities are **off by default** and each has its own switch in
+  Settings: `/cmd` (arbitrary shell), file browsing and fetching, and typing into
+  the focused window. The last one is gated because synthetic keystrokes into a
+  focused terminal reach the same place a shell command does.
+- What is *not* encrypted in `settings.json`: the paired chat IDs and their
+  names, the bot handle, and the worker URL. Anyone who can read that file learns
+  who can drive this machine, without needing the tokens.
 - This is a powerful remote‑control tool. Only pair chats you control, and keep
   your bot token private.
 
@@ -138,15 +160,24 @@ Requires the **.NET 8 SDK** (Windows). CI builds the same on every push
    لبه را تست می‌کند، بات را از همان مسیر وارد می‌کند و شروع به گوش‌دادن می‌کند —
    هر مرحله زنده گزارش می‌شود.
 ۴. در **Dashboard** کد جفت‌سازی را ببینید و در تلگرام `/pair <کد>` را بفرستید
-   (کد یک‌بارمصرف است).
+   (کد یک‌بارمصرف است و پس از ۱۰ دقیقه منقضی می‌شود؛ فقط در چت خصوصی پذیرفته می‌شود).
 ۵. حالا `/menu` را بفرستید و سیستم را کنترل کنید.
+
+### زبان فارسی
+تمام برنامه — هم پنجرهٔ ویندوز و هم خودِ بات — فارسی صحبت می‌کند. برای تغییر زبان
+یا در **Settings** گزینهٔ زبان را انتخاب کنید، یا در تلگرام دکمهٔ 🌐 پایین منو را
+بزنید (یا `/lang` را بفرستید). با انتخاب فارسی، چیدمان پنجره هم راست‌به‌چپ می‌شود.
 
 ### امنیت
 - توکن‌ها با DPAPI ویندوز رمزنگاری و فقط برای کاربر فعلی ذخیره می‌شوند.
 - فقط چت‌هایی که با «کد جفت‌سازی» تأیید شده‌اند اجازهٔ کنترل دارند.
-- ورکر با هدر مخفی `X-Proxy-Secret` محافظت می‌شود تا پراکسی عمومی نشود.
-- قابلیت اجرای دستور دلخواه (`/cmd`) و دسترسی به فایل‌ها به‌صورت پیش‌فرض غیرفعال است.
-- کد جفت‌سازی یک‌بارمصرف، با محدودیت تعداد تلاش و مقایسهٔ ثابت‌زمان است.
+- ورکر با هدر مخفی `X-Proxy-Secret` محافظت می‌شود؛ اگر این کلید تنظیم نشده باشد
+  ورکر همه‌چیز را رد می‌کند تا هرگز به پراکسی باز تبدیل نشود.
+- سه قابلیت پیش‌فرض خاموش‌اند و هرکدام کلید جداگانهٔ خود را در **Settings** دارند:
+  اجرای دستور (`/cmd`)، دسترسی به فایل، و تایپ در پنجرهٔ فعال.
+- کد جفت‌سازی یک‌بارمصرف است، منقضی می‌شود، تعداد تلاش برای هر چت جداگانه شمرده
+  می‌شود، و فقط در چت خصوصی پذیرفته می‌شود.
+- شناسهٔ چت‌های متصل، نام بات و نشانی ورکر در فایل تنظیمات رمزنگاری **نمی‌شوند**.
 
 </div>
 

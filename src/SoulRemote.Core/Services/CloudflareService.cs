@@ -22,8 +22,11 @@ public interface ICloudflareService
     Task UploadWorkerAsync(string apiToken, string accountId, string workerName, string proxySecret, CancellationToken ct = default);
     Task<bool> EnableSubdomainRouteAsync(string apiToken, string accountId, string workerName, CancellationToken ct = default);
 
-    /// <summary>Polls the deployed worker's health endpoint until it answers. Never throws on failure.</summary>
-    Task<bool> ProbeWorkerAsync(string workerUrl, string proxySecret, CancellationToken ct = default);
+    /// <summary>
+    /// Polls the deployed worker's health endpoint until it answers, and reports what
+    /// version answered. Never throws on failure.
+    /// </summary>
+    Task<WorkerProbe> ProbeWorkerAsync(string workerUrl, string proxySecret, CancellationToken ct = default);
 
     /// <summary>Normalises a user-supplied worker name to what Cloudflare accepts.</summary>
     string NormalizeWorkerName(string name);
@@ -37,10 +40,20 @@ public interface ICloudflareService
     Task<string?> GetPublicIpAsync(string workerUrl, string proxySecret, CancellationToken ct = default);
 }
 
+/// <summary>What the health probe found: whether the edge answered, and with which
+/// worker version. A null version means an older worker that predates the field.</summary>
+public sealed record WorkerProbe(bool Reachable, int? Version);
+
 public sealed class CloudflareService : ICloudflareService
 {
     private const string ApiBase = "https://api.cloudflare.com/client/v4";
     private const string CompatibilityDate = "2024-11-01";
+
+    /// <summary>
+    /// The version this build of the app deploys. Kept in step with WORKER_VERSION in
+    /// cloudflare/worker.js, which is the file embedded and uploaded.
+    /// </summary>
+    public const int ExpectedWorkerVersion = 2;
 
     private readonly HttpClient _http;
     private readonly ILogService _log;
@@ -135,7 +148,7 @@ public sealed class CloudflareService : ICloudflareService
         }
     }
 
-    public async Task<bool> ProbeWorkerAsync(string workerUrl, string proxySecret, CancellationToken ct = default)
+    public async Task<WorkerProbe> ProbeWorkerAsync(string workerUrl, string proxySecret, CancellationToken ct = default)
     {
         for (var attempt = 1; attempt <= 5; attempt++)
         {
@@ -146,7 +159,13 @@ public sealed class CloudflareService : ICloudflareService
                     req.Headers.TryAddWithoutValidation("X-Proxy-Secret", proxySecret);
                 using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
                 if (resp.IsSuccessStatusCode)
-                    return true;
+                {
+                    var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                    int? version = null;
+                    try { version = JsonSerializer.Deserialize<CfHealth>(body, JsonOptions)?.Version; }
+                    catch (JsonException) { /* an older worker answers without a version */ }
+                    return new WorkerProbe(true, version);
+                }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -161,7 +180,7 @@ public sealed class CloudflareService : ICloudflareService
             if (attempt < 5)
                 await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct).ConfigureAwait(false);
         }
-        return false;
+        return new WorkerProbe(false, null);
     }
 
     public async Task<string?> GetPublicIpAsync(string workerUrl, string proxySecret, CancellationToken ct = default)

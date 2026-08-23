@@ -36,9 +36,10 @@
                             </StackPanel>
 
                             <TextBlock Text="{p:T ui.connect.cf.field}" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
-                            <TextBox Style="{StaticResource FieldBox}"
-                                     Text="{Binding CloudflareToken, UpdateSourceTrigger=PropertyChanged}"
-                                     IsEnabled="{Binding IsIdle}" />
+                            <PasswordBox Style="{StaticResource FieldPassword}"
+                                         p:PasswordBoxBinding.Attach="True"
+                                         p:PasswordBoxBinding.Password="{Binding CloudflareToken, Mode=TwoWay}"
+                                         IsEnabled="{Binding IsIdle}" />
                             <TextBlock Style="{StaticResource BodyDim}" Margin="0,8,0,0" FontSize="12"
                                        Text="{Binding CloudflareHint}" />
                             <Button Style="{StaticResource GhostButton}" Content="{p:T ui.connect.cf.open}"
@@ -61,9 +62,10 @@
                             </StackPanel>
 
                             <TextBlock Text="{p:T ui.connect.tg.field}" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
-                            <TextBox Style="{StaticResource FieldBox}"
-                                     Text="{Binding TelegramToken, UpdateSourceTrigger=PropertyChanged}"
-                                     IsEnabled="{Binding IsIdle}" />
+                            <PasswordBox Style="{StaticResource FieldPassword}"
+                                         p:PasswordBoxBinding.Attach="True"
+                                         p:PasswordBoxBinding.Password="{Binding TelegramToken, Mode=TwoWay}"
+                                         IsEnabled="{Binding IsIdle}" />
                             <TextBlock Style="{StaticResource BodyDim}" Margin="0,8,0,0" FontSize="12"
                                        Text="{Binding TelegramHint}" />
                             <Button Style="{StaticResource GhostButton}" Content="{p:T ui.connect.tg.open}"
@@ -79,11 +81,18 @@
                     <StackPanel>
                         <!-- The action sits with the panel that reports on it, so it is always
                              visible without scrolling. -->
+                        <!-- This is a two-field paste-and-go form, so Enter should submit
+                             it and Escape should abandon a run in progress. The two
+                             buttons swap on IsBusy and WPF only dispatches these
+                             gestures to a visible, enabled target, so both can carry
+                             their flag at once without fighting. -->
                         <Button Style="{StaticResource PrimaryButton}" Content="{p:T ui.connect.go}"
                                 Command="{Binding ConnectCommand}" HorizontalAlignment="Stretch"
+                                IsDefault="True"
                                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}" />
                         <Button Style="{StaticResource GhostButton}" Content="{p:T ui.connect.cancel}"
                                 Command="{Binding CancelCommand}" HorizontalAlignment="Stretch"
+                                IsCancel="True"
                                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
 
                         <Border Style="{StaticResource CardInset}" Margin="0,14,0,4"

@@ -27,6 +27,12 @@
 
 const TELEGRAM_ORIGIN = "https://api.telegram.org";
 
+// Bumped whenever this script changes in a way the desktop app should care about.
+// The app re-uploads the worker on every Connect run, but a user who updates the app
+// and never re-runs Connect keeps whatever was deployed last — so /healthz reports
+// this and the app says so rather than letting the two drift silently.
+const WORKER_VERSION = 2;
+
 // /bot<token>/<method> and /file/bot<token>/<path> are the only two shapes the
 // Bot API uses, and the only two this worker will relay.
 const TELEGRAM_PATH = /^\/(?:file\/)?bot[0-9]+:[A-Za-z0-9_-]+\/.+/;
@@ -83,7 +89,7 @@ export default {
     // Authenticated health probe: the desktop app uses this to confirm the route
     // is published and the secret matches before it tries to sign the bot in.
     if (url.pathname === "/healthz") {
-      return json({ ok: true, service: "soul-remote-proxy" }, 200);
+      return json({ ok: true, service: "soul-remote-proxy", version: WORKER_VERSION }, 200);
     }
 
     // The public address of the machine that made this request, straight from

@@ -188,12 +188,17 @@ public sealed class ConnectionOrchestrator
                 Warn(_enableRoute, Strings.Get("ui.step.routeunconfirmed"));
 
             current = Begin(_probeEdge);
-            var reachable = await _cloudflare.ProbeWorkerAsync(workerUrl, proxySecret, ct).ConfigureAwait(false);
-            if (reachable)
-                Complete(_probeEdge, Strings.Get("ui.step.edgeanswering"));
-            else
+            var probe = await _cloudflare.ProbeWorkerAsync(workerUrl, proxySecret, ct).ConfigureAwait(false);
+            if (!probe.Reachable)
                 // Propagation can lag; the bot check below is the real proof, so this never blocks.
                 Warn(_probeEdge, Strings.Get("ui.step.propagating"));
+            else if (probe.Version is { } deployed && deployed != CloudflareService.ExpectedWorkerVersion)
+                // The upload above should have replaced it, so a mismatch here means the
+                // edge is still serving a cached older script. Say so rather than let the
+                // two drift silently.
+                Warn(_probeEdge, Strings.Format("ui.step.workerstale", deployed, CloudflareService.ExpectedWorkerVersion));
+            else
+                Complete(_probeEdge, Strings.Get("ui.step.edgeanswering"));
 
             // Persist everything Cloudflare-side before touching Telegram.
             settings = _settings.Current.Clone();

@@ -468,3 +468,58 @@ public sealed class LogServiceTests : IDisposable
         Assert.Single(log.Entries);
     }
 }
+
+/// <summary>
+/// The worker script is embedded from cloudflare/worker.js and deployed as-is, so the
+/// version the app expects and the version the file announces have to agree. Nothing
+/// else checks this — a mismatch would show up only as a spurious "run Connect again"
+/// warning on every single bring-up.
+/// </summary>
+public sealed class WorkerScriptTests
+{
+    [Fact]
+    public void The_embedded_worker_announces_the_version_the_app_expects()
+    {
+        var script = ReadEmbeddedWorker();
+        var match = System.Text.RegularExpressions.Regex.Match(script, @"WORKER_VERSION\s*=\s*(\d+)");
+
+        Assert.True(match.Success, "worker.js no longer declares WORKER_VERSION");
+        Assert.Equal(CloudflareService.ExpectedWorkerVersion, int.Parse(match.Groups[1].Value));
+    }
+
+    [Fact]
+    public void The_worker_refuses_when_no_secret_is_bound()
+    {
+        // Failing open here turned a mis-deployed worker into an open Telegram proxy
+        // on the user's own Cloudflare account.
+        var script = ReadEmbeddedWorker();
+        Assert.Contains("if (!expected)", script);
+        Assert.Contains("return false", script);
+    }
+
+    [Fact]
+    public void The_worker_compares_the_secret_in_constant_time()
+    {
+        var script = ReadEmbeddedWorker();
+        Assert.Contains("timingSafeEqual", script);
+        Assert.Contains("SHA-256", script);
+    }
+
+    [Fact]
+    public void The_worker_only_relays_bot_api_paths()
+    {
+        var script = ReadEmbeddedWorker();
+        Assert.Contains("TELEGRAM_PATH", script);
+        Assert.Contains("Not a Telegram Bot API path", script);
+    }
+
+    private static string ReadEmbeddedWorker()
+    {
+        var assembly = typeof(CloudflareService).Assembly;
+        var name = assembly.GetManifestResourceNames()
+            .Single(n => n.EndsWith("worker.js", StringComparison.OrdinalIgnoreCase));
+        using var stream = assembly.GetManifestResourceStream(name)!;
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+}

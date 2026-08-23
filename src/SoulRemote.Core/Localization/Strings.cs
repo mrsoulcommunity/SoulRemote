@@ -427,6 +427,8 @@ public static class Strings
         ["ui.step.routeunconfirmed"] = ("Route not confirmed — continuing", "مسیر تأیید نشد — ادامه می‌دهیم"),
         ["ui.step.edgeanswering"] = ("Edge is answering", "لبه پاسخ می‌دهد"),
         ["ui.step.propagating"] = ("Still propagating — continuing", "هنوز در حال انتشار — ادامه می‌دهیم"),
+        ["ui.step.workerstale"] = ("Edge answered with worker v{0}, expected v{1} — run Connect again",
+                                   "لبه با ورکر نسخهٔ {0} پاسخ داد، نسخهٔ {1} انتظار می‌رفت — دوباره اتصال را اجرا کنید"),
         ["ui.step.listening"] = ("Listening for commands", "در انتظار دستور"),
         ["ui.step.cancelled"] = ("Cancelled", "لغو شد"),
 

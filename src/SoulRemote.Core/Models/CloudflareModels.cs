@@ -38,6 +38,14 @@ public sealed class CfAccount
     [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
 }
 
+/// <summary>What the deployed worker reports about itself.</summary>
+public sealed class CfHealth
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("service")] public string? Service { get; set; }
+    [JsonPropertyName("version")] public int? Version { get; set; }
+}
+
 /// <summary>What the deployed worker reports back about the caller.</summary>
 public sealed class CfWhoAmI
 {

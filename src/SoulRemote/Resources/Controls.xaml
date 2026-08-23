@@ -30,6 +30,15 @@
     <!-- ============================================================
          Buttons
          ============================================================ -->
+<!--
+        Keyboard focus.
+
+        Every control here is fully retemplated, and WPF's default focus adorner is a
+        near-black dashed rectangle — invisible on grounds this dark. Nothing set
+        FocusVisualStyle either, so tabbing through the app showed nothing at all,
+        including on the permission toggles that hand a chat power over this machine.
+        Each template below carries its own IsKeyboardFocused trigger.
+    -->
     <Style x:Key="PrimaryButton" TargetType="Button">
         <Setter Property="Foreground" Value="#FF08131A" />
         <Setter Property="Background" Value="{StaticResource SignalBrush}" />
@@ -45,11 +54,16 @@
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Bd" Background="{TemplateBinding Background}"
                             CornerRadius="6" Padding="{TemplateBinding Padding}"
+                            BorderBrush="Transparent" BorderThickness="0"
                             SnapsToDevicePixels="True">
                         <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                           VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource InkBrush}" />
+                            <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
+                        </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Opacity" Value="0.86" />
                         </Trigger>
@@ -87,6 +101,9 @@
                                           VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource SignalBrush}" />
+                        </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverWashBrush}" />
                             <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource InkFaintBrush}" />
@@ -124,6 +141,10 @@
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverWashBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource SignalBrush}" />
+                        </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverWashBrush}" />
                             <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
@@ -158,7 +179,8 @@
                 <ControlTemplate TargetType="RadioButton">
                     <Grid>
                         <Border x:Name="Bd" Background="Transparent" CornerRadius="7"
-                                Padding="12,10" SnapsToDevicePixels="True">
+                                Padding="12,10" SnapsToDevicePixels="True"
+                                BorderBrush="Transparent" BorderThickness="1">
                             <ContentPresenter VerticalAlignment="Center" />
                         </Border>
                         <!-- Selection is marked by an edge tick, not a filled pill:
@@ -168,6 +190,10 @@
                                 Background="{StaticResource SignalBrush}" Opacity="0" Margin="-10,0,0,0" />
                     </Grid>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource SignalBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+                        </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverWashBrush}" />
                             <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
@@ -223,6 +249,49 @@
         </Setter>
     </Style>
 
+    <!--
+        The token fields. A PasswordBox cannot share a TextBox style — it is a
+        separate control with its own template — so this mirrors FieldBox rather
+        than deriving from it, and the two must be kept in step by eye.
+    -->
+    <Style x:Key="FieldPassword" TargetType="PasswordBox">
+        <Setter Property="Background" Value="{StaticResource RailBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="CaretBrush" Value="{StaticResource SignalBrush}" />
+        <Setter Property="SelectionBrush" Value="{StaticResource RelayBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="12,10" />
+        <Setter Property="FontFamily" Value="{StaticResource DataFont}" />
+        <Setter Property="FontSize" Value="{StaticResource SizeBody}" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="PasswordBox">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="6" SnapsToDevicePixels="True">
+                        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
+                                      VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource InkFaintBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource SignalBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource InkDimBrush}" />
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.6" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ============================================================
          Toggle switch (CheckBox retemplated)
          ============================================================ -->
@@ -254,6 +323,10 @@
                                           TextBlock.FontSize="{TemplateBinding FontSize}" />
                     </Grid>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource InkBrush}" />
+                            <Setter TargetName="Track" Property="BorderThickness" Value="2" />
+                        </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Track" Property="Background" Value="{StaticResource SignalDeepBrush}" />
                             <Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource SignalBrush}" />
@@ -300,6 +373,10 @@
                                           TextBlock.FontSize="{TemplateBinding FontSize}" />
                     </Grid>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource InkBrush}" />
+                            <Setter TargetName="Track" Property="BorderThickness" Value="2" />
+                        </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Track" Property="Background" Value="{StaticResource StandbyWashBrush}" />
                             <Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource StandbyBrush}" />
@@ -403,6 +480,9 @@
                         <ContentPresenter VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource InkBrush}" />
+                        </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverWashBrush}" />
                         </Trigger>

@@ -155,8 +155,44 @@ public sealed class CommandRouter
         "inp" => BotMenu.Input(),
         "sys" => BotMenu.System(),
         "prc" => BotMenu.Processes(_settings.Current.AllowShellCommands),
-        _ => BotMenu.Home(Environment.MachineName),
+        _ => BotMenu.Home(Environment.MachineName, HomeStatus()),
     };
+
+    /// <summary>
+    /// The one-glance answer to "how is my PC?", shown on the home panel so opening the
+    /// bot is informative on its own. Every part is best-effort: a probe that fails is
+    /// left out rather than breaking the panel.
+    /// </summary>
+    private string HomeStatus()
+    {
+        var parts = new List<string>();
+        try
+        {
+            parts.Add("⏱ up " + TextUtil.HumanDuration(TimeSpan.FromMilliseconds(Environment.TickCount64)));
+        }
+        catch { /* never block the panel on telemetry */ }
+
+        try
+        {
+            var muted = Native.CoreAudio.IsMuted();
+            var vol = Native.CoreAudio.GetVolume();
+            if (muted == true)
+                parts.Add("🔇 muted");
+            else if (vol is { } v)
+                parts.Add($"🔊 {Math.Round(v * 100)}%");
+        }
+        catch { /* audio endpoint may be absent */ }
+
+        try
+        {
+            var chats = _settings.Current.AuthorizedChatIds.Count;
+            parts.Add($"👤 {chats} paired");
+        }
+        catch { /* settings unavailable */ }
+
+        var line = parts.Count > 0 ? string.Join("   ·   ", parts) : "Pick a control.";
+        return line + $"\n<i>{DateTime.Now:HH:mm:ss}</i>";
+    }
 
     private int SafeScreenCount()
     {
@@ -341,10 +377,6 @@ public sealed class CommandRouter
                 return;
             case BotMenu.BarPower:
                 await ShowScreenAsync(chatId, 0, "pwr", ct).ConfigureAwait(false);
-                return;
-            case BotMenu.BarStatus:
-                Count("shortcut:status");
-                await SendReportAsync(chatId, () => _info.GetSystemInfoAsync(ct), ct).ConfigureAwait(false);
                 return;
         }
 

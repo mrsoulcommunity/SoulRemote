@@ -17,7 +17,6 @@ public static class BotMenu
     public const string BarShot = "📸 Screenshot";
     public const string BarLock = "🔒 Lock";
     public const string BarPower = "⚡ Power";
-    public const string BarStatus = "📊 Status";
 
     public static TgReplyKeyboardMarkup ShortcutBar() => new()
     {
@@ -27,7 +26,7 @@ public static class BotMenu
         Keyboard = new()
         {
             new() { new TgKeyboardButton(BarMenu), new TgKeyboardButton(BarShot) },
-            new() { new TgKeyboardButton(BarLock), new TgKeyboardButton(BarPower), new TgKeyboardButton(BarStatus) },
+            new() { new TgKeyboardButton(BarLock), new TgKeyboardButton(BarPower) },
         },
     };
 
@@ -55,7 +54,7 @@ public static class BotMenu
                 perScreen.Add(new TgInlineKeyboardButton($"Monitor {i + 1}", $"a:ss{i}"));
             rows.Add(perScreen);
         }
-        rows.Add(Row(("⬅ Back", "m:home")));
+        rows.Add(Row(("⬅ Menu", "m:home")));
         return new Screen(
             screenCount > 1
                 ? $"📸 <b>Capture</b>\n{screenCount} displays detected."
@@ -64,47 +63,48 @@ public static class BotMenu
     }
 
     public static Screen Power() => new(
-        "⚡ <b>Power</b>\nDestructive actions ask for confirmation first.",
+        "⚡ <b>Power</b>\nThe last two ask you to confirm.",
         Keyboard(
             Row(("🔒 Lock", "a:lock"), ("🌙 Sleep", "a:sleep")),
-            Row(("🖤 Display off", "a:mon"), ("💤 Hibernate", "c:hb")),
-            Row(("🔄 Restart", "c:rs"), ("⏻ Shut down", "c:sd")),
-            Row(("🚪 Sign out", "c:lo"), ("✋ Cancel pending", "a:abort")),
-            Row(("⬅ Back", "m:home"))));
+            Row(("🌑 Display off", "a:mon"), ("💤 Hibernate", "c:hb")),
+            Row(("🚪 Sign out", "c:lo"), ("🔄 Restart", "c:rs")),
+            Row(("⏻ Shut down", "c:sd")),
+            Row(("✋ Cancel a pending shutdown", "a:abort")),
+            Row(("⬅ Menu", "m:home"))));
 
     public static Screen Audio() => new(
         "🔊 <b>Audio &amp; media</b>",
         Keyboard(
             Row(("🔉 Down", "a:vdn"), ("🔇 Mute", "a:mute"), ("🔊 Up", "a:vup")),
-            Row(("⏮", "a:prev"), ("⏯", "a:play"), ("⏭", "a:next")),
+            Row(("⏮ Prev", "a:prev"), ("⏯ Play", "a:play"), ("⏭ Next", "a:next")),
             Row(("🎚 Set level…", "i:vol")),
-            Row(("⬅ Back", "m:home"))));
+            Row(("⬅ Menu", "m:home"))));
 
     public static Screen Input() => new(
         "⌨️ <b>Input &amp; clipboard</b>\nThese act on the signed-in desktop session.",
         Keyboard(
-            Row(("📋 Read clipboard", "a:clip")),
+            Row(("📄 Read clipboard", "a:clip")),
             Row(("✏️ Set clipboard…", "i:clip"), ("⌨️ Type text…", "i:type")),
-            Row(("🔗 Open…", "i:open"), ("🗣 Speak…", "i:say")),
-            Row(("⬅ Back", "m:home"))));
+            Row(("🔗 Open link…", "i:open"), ("🗣 Speak…", "i:say")),
+            Row(("⬅ Menu", "m:home"))));
 
     public static Screen System() => new(
         "📊 <b>System</b>",
         Keyboard(
             Row(("🖥 Overview", "a:sys"), ("💽 Disks", "a:disk")),
             Row(("🔋 Power status", "a:bat"), ("🌐 Network", "a:net")),
-            Row(("⬅ Back", "m:home"))));
+            Row(("⬅ Menu", "m:home"))));
 
     public static Screen Processes(bool shellAllowed)
     {
         var rows = new List<List<TgInlineKeyboardButton>>
         {
-            Row(("📋 Top processes", "a:ps")),
+            Row(("📊 Top processes", "a:ps")),
             Row(("❌ End a process…", "i:kill")),
         };
         if (shellAllowed)
             rows.Add(Row(("⌨️ Run a command…", "i:cmd")));
-        rows.Add(Row(("⬅ Back", "m:home")));
+        rows.Add(Row(("⬅ Menu", "m:home")));
         return new Screen(
             shellAllowed
                 ? "⚙️ <b>Processes</b>"

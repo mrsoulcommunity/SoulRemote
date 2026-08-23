@@ -272,6 +272,53 @@
         </Setter>
     </Style>
 
+    <!--
+        A permission toggle grants a paired chat real power over this account, so "on"
+        here means elevated risk, not healthy. It therefore lights standby amber rather
+        than signal teal, keeping the palette rule intact: colour is state.
+    -->
+    <Style x:Key="RiskToggleSwitch" TargetType="CheckBox" BasedOn="{StaticResource ToggleSwitch}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <Grid Background="Transparent">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="40" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border x:Name="Track" Grid.Column="0" Width="36" Height="20"
+                                CornerRadius="10" Background="{StaticResource LineBrush}"
+                                BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                                HorizontalAlignment="Left" VerticalAlignment="Center" />
+                        <Ellipse x:Name="Knob" Grid.Column="0" Width="14" Height="14"
+                                 Fill="{StaticResource InkDimBrush}"
+                                 HorizontalAlignment="Left" VerticalAlignment="Center"
+                                 Margin="4,0,0,0" />
+                        <ContentPresenter Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0"
+                                          TextBlock.Foreground="{TemplateBinding Foreground}"
+                                          TextBlock.FontFamily="{TemplateBinding FontFamily}"
+                                          TextBlock.FontSize="{TemplateBinding FontSize}" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Track" Property="Background" Value="{StaticResource StandbyWashBrush}" />
+                            <Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource StandbyBrush}" />
+                            <Setter TargetName="Knob" Property="Fill" Value="{StaticResource StandbyBrush}" />
+                            <Setter TargetName="Knob" Property="Margin" Value="18,0,0,0" />
+                            <Setter Property="Foreground" Value="{StaticResource StandbyBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource InkFaintBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ============================================================
          Scrollbar — thin, unobtrusive, correct in both orientations
          ============================================================ -->

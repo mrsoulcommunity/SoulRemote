@@ -47,16 +47,17 @@
             <!-- ===== Permissions ===== -->
             <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                 <StackPanel>
-                    <TextBlock Text="WHAT THE BOT MAY DO" Style="{StaticResource Eyebrow}" />
+                    <TextBlock Text="WHAT THE BOT MAY DO" Style="{StaticResource Eyebrow}"
+                               Foreground="{StaticResource StandbyBrush}" />
                     <TextBlock Style="{StaticResource BodyDim}" Margin="0,8,0,0" FontSize="12"
                                Text="Power, screenshot, media and process controls are always available to paired chats. These two are off until you turn them on." />
                     <StackPanel Margin="0,14,0,0">
-                        <CheckBox Style="{StaticResource ToggleSwitch}" Content="Allow shell commands (/cmd)"
+                        <CheckBox Style="{StaticResource RiskToggleSwitch}" Content="Allow shell commands (/cmd)"
                                   IsChecked="{Binding AllowShellCommands}" />
                         <TextBlock Style="{StaticResource OptionHint}"
                                    Text="Runs anything a paired chat sends. Grants full control of this account — leave off unless you need it." />
 
-                        <CheckBox Style="{StaticResource ToggleSwitch}" Content="Allow browsing and fetching files"
+                        <CheckBox Style="{StaticResource RiskToggleSwitch}" Content="Allow browsing and fetching files"
                                   IsChecked="{Binding AllowFileAccess}" />
                         <TextBlock Style="{StaticResource OptionHint}"
                                    Text="Lets a paired chat list folders and download files from this PC." />

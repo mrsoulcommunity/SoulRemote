@@ -390,6 +390,124 @@ public sealed class CommandRouterTests
         Assert.Empty(h.Telegram.Files);
     }
 
+    // ---------- files ----------
+
+    [Fact]
+    public async Task Browsing_lists_a_folder_and_a_tap_walks_into_it()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "soulremote-router-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "inner"));
+        File.WriteAllText(Path.Combine(root, "notes.txt"), "hello");
+        try
+        {
+            var h = new Harness(s => s.AllowFileAccess = true);
+            await h.Text(Owner, "/files " + root);
+
+            // The panel names the folder; its entries are the buttons.
+            var listing = h.Telegram.Messages.Last();
+            Assert.Contains(root, listing.Text, StringComparison.Ordinal);
+            Assert.Contains(listing.Buttons, b => b.Contains("inner", StringComparison.Ordinal));
+            Assert.Contains(listing.Buttons, b => b.Contains("notes.txt", StringComparison.Ordinal));
+
+            // Buttons carry an index into that listing, because a real path does not fit
+            // in Telegram's 64-byte callback_data.
+            h.Telegram.Edits.Clear();
+            await h.Tap(Owner, "f:0");
+            Assert.Contains(h.Telegram.Edits, e => e.Text.Contains("inner", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task Tapping_a_file_sends_it()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "soulremote-router-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Path.Combine(root, "notes.txt"), "hello");
+        try
+        {
+            var h = new Harness(s => s.AllowFileAccess = true);
+            await h.Text(Owner, "/files " + root);
+            await h.Tap(Owner, "f:0");
+
+            Assert.Single(h.Telegram.Files);
+            Assert.Equal("notes.txt", h.Telegram.Files[0].Name);
+            Assert.False(h.Telegram.Files[0].IsPhoto);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task A_button_from_a_listing_the_chat_no_longer_has_is_refused()
+    {
+        var h = new Harness(s => s.AllowFileAccess = true);
+
+        // No listing was ever taken for this chat, so the index refers to nothing.
+        await h.Tap(Owner, "f:3");
+
+        Assert.Empty(h.Telegram.Files);
+        Assert.NotEmpty(h.Telegram.Messages);
+    }
+
+    [Fact]
+    public async Task Browsing_is_refused_outright_while_file_access_is_off()
+    {
+        var h = new Harness();
+        await h.Text(Owner, "/files C:\\");
+
+        Assert.Contains(h.Telegram.Messages, m => m.Text.Contains("switched off", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task A_document_sent_to_the_bot_is_saved_when_file_access_is_on()
+    {
+        var downloads = Path.Combine(Path.GetTempPath(), "soulremote-in-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var h = new Harness(s => { s.AllowFileAccess = true; s.DownloadFolder = downloads; });
+            await h.Router.HandleUpdateAsync(new TgUpdate
+            {
+                UpdateId = 9,
+                Message = new TgMessage
+                {
+                    MessageId = 1,
+                    Chat = new TgChat { Id = Owner, Type = "private" },
+                    Document = new TgDocument { FileId = "abc", FileName = "report.pdf", FileSize = 3 },
+                },
+            }, CancellationToken.None);
+
+            Assert.True(File.Exists(Path.Combine(downloads, "report.pdf")));
+        }
+        finally
+        {
+            if (Directory.Exists(downloads)) Directory.Delete(downloads, true);
+        }
+    }
+
+    [Fact]
+    public async Task A_document_is_refused_while_file_access_is_off()
+    {
+        var h = new Harness();
+        await h.Router.HandleUpdateAsync(new TgUpdate
+        {
+            UpdateId = 9,
+            Message = new TgMessage
+            {
+                MessageId = 1,
+                Chat = new TgChat { Id = Owner, Type = "private" },
+                Document = new TgDocument { FileId = "abc", FileName = "report.pdf", FileSize = 3 },
+            },
+        }, CancellationToken.None);
+
+        Assert.Contains(h.Telegram.Messages, m => m.Text.Contains("switched off", StringComparison.OrdinalIgnoreCase));
+    }
+
     // ---------- reports and captures ----------
 
     [Fact]

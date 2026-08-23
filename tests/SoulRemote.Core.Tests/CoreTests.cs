@@ -308,8 +308,8 @@ public sealed class BotMenuTests
 
             foreach (var kind in Enum.GetValues<PromptKind>())
             {
-                Assert.False(keyish.IsMatch(ChatPrompts.PromptFor(kind)));
-                Assert.False(keyish.IsMatch(ChatPrompts.PlaceholderFor(kind)));
+                Assert.DoesNotMatch(keyish, ChatPrompts.PromptFor(kind));
+                Assert.DoesNotMatch(keyish, ChatPrompts.PlaceholderFor(kind));
             }
         }
         Strings.Use(AppLanguage.English);

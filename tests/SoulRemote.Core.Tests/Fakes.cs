@@ -67,8 +67,8 @@ public sealed class FakeSettings : ISettingsService
 /// <summary>Records every call the router makes, and can be told to fail on demand.</summary>
 public sealed class FakeTelegram : ITelegramClient
 {
-    public sealed record Sent(long ChatId, string Text, bool HasKeyboard);
-    public sealed record Edited(long ChatId, long MessageId, string Text);
+    public sealed record Sent(long ChatId, string Text, bool HasKeyboard, IReadOnlyList<string> Buttons);
+    public sealed record Edited(long ChatId, long MessageId, string Text, IReadOnlyList<string> Buttons);
     public sealed record Answered(string CallbackId, string? Text, bool Alert);
     public sealed record File(long ChatId, string Name, int Bytes, bool IsPhoto);
 
@@ -95,13 +95,13 @@ public sealed class FakeTelegram : ITelegramClient
 
     public Task<long?> SendMessageAsync(long chatId, string text, TgInlineKeyboardMarkup? keyboard = null, CancellationToken ct = default)
     {
-        Messages.Add(new Sent(chatId, text, keyboard is not null));
+        Messages.Add(new Sent(chatId, text, keyboard is not null, Captions(keyboard)));
         return Task.FromResult<long?>(Messages.Count);
     }
 
     public Task<long?> SendWithMarkupAsync(long chatId, string text, object? replyMarkup, CancellationToken ct = default)
     {
-        Messages.Add(new Sent(chatId, text, replyMarkup is not null));
+        Messages.Add(new Sent(chatId, text, replyMarkup is not null, Captions(replyMarkup as TgInlineKeyboardMarkup)));
         return Task.FromResult<long?>(Messages.Count);
     }
 
@@ -109,7 +109,7 @@ public sealed class FakeTelegram : ITelegramClient
     {
         if (EditFailure is not null)
             throw EditFailure;
-        Edits.Add(new Edited(chatId, messageId, text));
+        Edits.Add(new Edited(chatId, messageId, text, Captions(keyboard)));
         return Task.FromResult(true);
     }
 
@@ -145,6 +145,11 @@ public sealed class FakeTelegram : ITelegramClient
 
     public Task SetMyCommandsAsync(IReadOnlyList<(string Command, string Description)> commands, CancellationToken ct = default)
         => Task.CompletedTask;
+
+    private static IReadOnlyList<string> Captions(TgInlineKeyboardMarkup? keyboard) =>
+        keyboard is null
+            ? Array.Empty<string>()
+            : keyboard.InlineKeyboard.SelectMany(row => row).Select(b => b.Text).ToArray();
 }
 
 /// <summary>Every control action, recorded rather than performed.</summary>

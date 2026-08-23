@@ -60,6 +60,12 @@ jobs:
       - name: Check the worker parses
         run: node --check cloudflare/worker.js
 
+      # A missing StaticResource throws when a page is first shown, and a binding to a
+      # property that does not exist fails silently. The compiler catches neither, and
+      # the tests deliberately do not depend on Windows, so this closes the gap.
+      - name: Check the XAML resolves
+        run: python tools/check-xaml.py
+
       # A tagged build stamps its own version; every other build stays at the csproj
       # default. GitHub's expression language has no substring, so the "v" prefix is
       # trimmed here rather than inline.

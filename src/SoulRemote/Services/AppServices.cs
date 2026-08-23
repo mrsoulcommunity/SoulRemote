@@ -1,8 +1,16 @@
+using SoulRemote.Abstractions;
+using SoulRemote.Localization;
+using SoulRemote.Platform;
+
 namespace SoulRemote.Services;
 
 /// <summary>
 /// Tiny composition root. Constructs the service graph once and exposes it to
 /// the view models. Kept manual to avoid a DI container dependency.
+///
+/// This is also where the two halves of the app meet: everything platform-neutral
+/// comes from SoulRemote.Core, and the Windows implementations of its interfaces —
+/// the dispatcher, DPAPI, screen capture, system control — are supplied here.
 /// </summary>
 public sealed class AppServices
 {
@@ -20,19 +28,28 @@ public sealed class AppServices
 
     public AppServices()
     {
-        Log = new LogService();
-        Settings = new SettingsService(Log);
-        Settings.Load();
+        Log = new LogService(WpfDispatcher.Instance);
+        Settings = new SettingsService(Log, DpapiSecretProtector.Instance);
+        var settings = Settings.Load();
+
+        // The language has to be live before anything renders a string.
+        Strings.Use(settings.LanguageOrDefault);
+
+        // Old log files are swept once, at startup: the app is designed to run for
+        // weeks at a time, so nothing else would ever get round to it.
+        var pruned = Log.PruneOlderThan(settings.LogRetentionDays);
+        if (pruned > 0)
+            Log.Info($"Removed {pruned} log file(s) older than {settings.LogRetentionDays} days.");
 
         Cloudflare = new CloudflareService(Log);
         Telegram = new TelegramClient(Log);
         System = new SystemControlService(Log);
         Screenshot = new ScreenshotService();
-        Info = new SystemInfoService(Log);
+        Info = new SystemInfoService(Log, Settings, Cloudflare);
         Startup = new StartupManager(Log);
 
         Router = new CommandRouter(Settings, Telegram, System, Screenshot, Info, Log);
         Bot = new BotEngine(Settings, Telegram, Router, Log);
-        Orchestrator = new ConnectionOrchestrator(Settings, Cloudflare, Telegram, Bot, Log);
+        Orchestrator = new ConnectionOrchestrator(Settings, Cloudflare, Telegram, Bot, Log, WpfDispatcher.Instance);
     }
 }

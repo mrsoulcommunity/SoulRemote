@@ -1,13 +1,8 @@
 using System.Diagnostics;
+using System.IO;
 using Microsoft.Win32;
 
 namespace SoulRemote.Services;
-
-public interface IStartupManager
-{
-    bool IsEnabled();
-    void SetEnabled(bool enabled);
-}
 
 /// <summary>Manages the per-user "run at sign-in" registry entry.</summary>
 public sealed class StartupManager : IStartupManager
@@ -61,9 +56,15 @@ public sealed class StartupManager : IStartupManager
 
     private static string GetExecutablePath()
     {
-        // Prefer the real .exe path (Environment.ProcessPath), fall back to the module file name.
-        return Environment.ProcessPath
-               ?? Process.GetCurrentProcess().MainModule?.FileName
-               ?? System.Reflection.Assembly.GetExecutingAssembly().Location;
+        // Environment.ProcessPath is the real .exe even for a single-file build. The old
+        // last-resort fallback was Assembly.Location, which is an EMPTY STRING in a
+        // single-file app — writing that to the Run key would have registered a startup
+        // entry that launches nothing.
+        if (Environment.ProcessPath is { Length: > 0 } path)
+            return path;
+        using var current = Process.GetCurrentProcess();
+        if (current.MainModule?.FileName is { Length: > 0 } module)
+            return module;
+        return Path.Combine(AppContext.BaseDirectory, "SoulRemote.exe");
     }
 }

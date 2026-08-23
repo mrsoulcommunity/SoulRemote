@@ -19,6 +19,17 @@
     <Platforms>AnyCPU</Platforms>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <!--
+      Publish settings live here rather than only on the CI command line, so the
+      publish command in the README produces the same artefact CI does. Without
+      IncludeNativeLibrariesForSelfExtract the "single file" leaves native DLLs
+      beside the exe; compression takes the self-contained build from ~162 MB to
+      ~72 MB, which matters a great deal to anyone downloading it over a throttled
+      connection.
+    -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!--
       This is a WPF app that also uses a few WinForms/Drawing types (tray icon, screen
       capture, power status). With ImplicitUsings on, the WinForms SDK injects global
       usings for System.Windows.Forms and System.Drawing, which makes dozens of simple
@@ -39,7 +50,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Assets\worker.js" />
+    <!-- Everything that does not need Windows: the relay, the bot, settings, strings. -->
+    <ProjectReference Include="..\SoulRemote.Core\SoulRemote.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

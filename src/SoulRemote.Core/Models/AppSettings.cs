@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using SoulRemote.Localization;
 
 namespace SoulRemote.Models;
 
@@ -38,7 +39,7 @@ public sealed class AppSettings
     /// <summary>Master switch: allow arbitrary shell command execution via /cmd.</summary>
     public bool AllowShellCommands { get; set; } = false;
 
-    /// <summary>Allow file browsing / download commands.</summary>
+    /// <summary>Allow browsing folders, fetching files and opening local paths.</summary>
     public bool AllowFileAccess { get; set; } = false;
 
     /// <summary>Launch Soul Remote automatically when the user signs in.</summary>
@@ -59,11 +60,37 @@ public sealed class AppSettings
     /// <summary>Stops the relay-line animation for users who prefer a still interface.</summary>
     public bool ReduceMotion { get; set; } = false;
 
+    /// <summary>UI and bot language, stored as a two-letter tag ("en" / "fa").</summary>
+    public string Language { get; set; } = "en";
+
+    /// <summary>Log files older than this are deleted at startup. 0 keeps them forever.</summary>
+    public int LogRetentionDays { get; set; } = 14;
+
+    /// <summary>Where files received from Telegram are written. Empty means the default Downloads folder.</summary>
+    public string DownloadFolder { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public AppLanguage LanguageOrDefault => AppLanguageExtensions.Parse(Language);
+
     [JsonIgnore]
     public bool HasCloudflare => !string.IsNullOrWhiteSpace(CloudflareApiToken) && !string.IsNullOrWhiteSpace(WorkerUrl);
 
     [JsonIgnore]
     public bool HasTelegram => !string.IsNullOrWhiteSpace(TelegramBotToken);
+
+    /// <summary>
+    /// Brings hand-edited or legacy files back into range. Called on both load and save
+    /// so the same rules apply whichever direction the value came from.
+    /// </summary>
+    public void Normalize()
+    {
+        PollTimeoutSeconds = Math.Clamp(PollTimeoutSeconds <= 0 ? 25 : PollTimeoutSeconds, 5, 50);
+        LogRetentionDays = Math.Clamp(LogRetentionDays, 0, 365);
+        Language = LanguageOrDefault.Tag();
+        if (string.IsNullOrWhiteSpace(WorkerName))
+            WorkerName = "soul-remote-proxy";
+        AuthorizedChatIds = AuthorizedChatIds.Distinct().ToList();
+    }
 
     public AppSettings Clone()
     {
@@ -87,6 +114,9 @@ public sealed class AppSettings
             NotifyOnStartup = NotifyOnStartup,
             PollTimeoutSeconds = PollTimeoutSeconds,
             ReduceMotion = ReduceMotion,
+            Language = Language,
+            LogRetentionDays = LogRetentionDays,
+            DownloadFolder = DownloadFolder,
         };
     }
 }

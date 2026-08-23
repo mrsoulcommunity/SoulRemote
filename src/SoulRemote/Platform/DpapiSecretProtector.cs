@@ -1,19 +1,22 @@
 using System.Security.Cryptography;
 using System.Text;
+using SoulRemote.Abstractions;
 
-namespace SoulRemote.Services.Security;
+namespace SoulRemote.Platform;
 
 /// <summary>
 /// Thin wrapper over the Windows Data Protection API (DPAPI). Secrets are
 /// encrypted for the current user account so the stored settings file cannot be
 /// read on another machine or by another user.
 /// </summary>
-public static class DataProtector
+public sealed class DpapiSecretProtector : ISecretProtector
 {
+    public static readonly DpapiSecretProtector Instance = new();
+
     // Extra entropy binds ciphertext to this application.
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("SoulRemote::v1::dpapi");
 
-    public static string Protect(string? plainText)
+    public string Protect(string? plainText)
     {
         if (string.IsNullOrEmpty(plainText))
             return string.Empty;
@@ -30,7 +33,7 @@ public static class DataProtector
         }
     }
 
-    public static string Unprotect(string? cipherText)
+    public string Unprotect(string? cipherText)
     {
         if (string.IsNullOrEmpty(cipherText))
             return string.Empty;

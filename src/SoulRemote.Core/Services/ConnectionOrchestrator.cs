@@ -1,7 +1,8 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using System.Windows;
+using SoulRemote.Abstractions;
+using SoulRemote.Localization;
 using SoulRemote.Models;
 using SoulRemote.Services.Security;
 
@@ -12,9 +13,21 @@ public enum StepStatus { Pending, Running, Done, Failed, Skipped }
 /// <summary>One stage of the connection pipeline, surfaced live in the UI.</summary>
 public sealed class ConnectionStep : INotifyPropertyChanged
 {
-    public ConnectionStep(string title) => Title = title;
+    private readonly string _titleKey;
+    private readonly IUiDispatcher _dispatcher;
 
-    public string Title { get; }
+    public ConnectionStep(string titleKey, IUiDispatcher dispatcher)
+    {
+        _titleKey = titleKey;
+        _dispatcher = dispatcher;
+    }
+
+    /// <summary>Resolved on read so a language change re-titles the pipeline in place.</summary>
+    public string Title => Strings.Get(_titleKey);
+
+    /// <summary>Re-reads the title after the language changes.</summary>
+    public void RefreshTitle() => _dispatcher.Post(
+        () => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Title))));
 
     private string _detail = string.Empty;
     public string Detail { get => _detail; set => Set(ref _detail, value); }
@@ -36,11 +49,7 @@ public sealed class ConnectionStep : INotifyPropertyChanged
             return;
         field = value;
         // Marshalled so background pipeline stages can update the UI safely.
-        var dispatcher = Application.Current?.Dispatcher;
-        if (dispatcher is not null && !dispatcher.CheckAccess())
-            dispatcher.BeginInvoke(() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name)));
-        else
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        _dispatcher.Post(() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name)));
     }
 }
 
@@ -63,14 +72,14 @@ public sealed class ConnectionOrchestrator
     private readonly BotEngine _bot;
     private readonly ILogService _log;
 
-    private readonly ConnectionStep _verifyToken = new("Verify Cloudflare token");
-    private readonly ConnectionStep _resolveAccount = new("Resolve account");
-    private readonly ConnectionStep _resolveSubdomain = new("Find workers.dev subdomain");
-    private readonly ConnectionStep _deployWorker = new("Deploy relay worker");
-    private readonly ConnectionStep _enableRoute = new("Publish public route");
-    private readonly ConnectionStep _probeEdge = new("Reach the edge");
-    private readonly ConnectionStep _verifyBot = new("Authenticate Telegram bot");
-    private readonly ConnectionStep _startRelay = new("Start listening");
+    private readonly ConnectionStep _verifyToken;
+    private readonly ConnectionStep _resolveAccount;
+    private readonly ConnectionStep _resolveSubdomain;
+    private readonly ConnectionStep _deployWorker;
+    private readonly ConnectionStep _enableRoute;
+    private readonly ConnectionStep _probeEdge;
+    private readonly ConnectionStep _verifyBot;
+    private readonly ConnectionStep _startRelay;
 
     public ObservableCollection<ConnectionStep> Steps { get; }
 
@@ -81,13 +90,23 @@ public sealed class ConnectionOrchestrator
 
     public ConnectionOrchestrator(
         ISettingsService settings, ICloudflareService cloudflare,
-        ITelegramClient telegram, BotEngine bot, ILogService log)
+        ITelegramClient telegram, BotEngine bot, ILogService log, IUiDispatcher? dispatcher = null)
     {
         _settings = settings;
         _cloudflare = cloudflare;
         _telegram = telegram;
         _bot = bot;
         _log = log;
+
+        var ui = dispatcher ?? ImmediateDispatcher.Instance;
+        _verifyToken = new ConnectionStep("ui.step.verify", ui);
+        _resolveAccount = new ConnectionStep("ui.step.account", ui);
+        _resolveSubdomain = new ConnectionStep("ui.step.subdomain", ui);
+        _deployWorker = new ConnectionStep("ui.step.deploy", ui);
+        _enableRoute = new ConnectionStep("ui.step.route", ui);
+        _probeEdge = new ConnectionStep("ui.step.probe", ui);
+        _verifyBot = new ConnectionStep("ui.step.bot", ui);
+        _startRelay = new ConnectionStep("ui.step.listen", ui);
 
         Steps = new ObservableCollection<ConnectionStep>
         {
@@ -96,15 +115,22 @@ public sealed class ConnectionOrchestrator
         };
     }
 
+    /// <summary>Re-titles the pipeline after a language change.</summary>
+    public void RefreshLanguage()
+    {
+        foreach (var step in Steps)
+            step.RefreshTitle();
+    }
+
     public async Task<ConnectionResult> RunAsync(ConnectionRequest request, CancellationToken ct = default)
     {
         if (_running)
-            return new ConnectionResult(false, null, null, "A connection run is already in progress.");
+            return new ConnectionResult(false, null, null, Strings.Get("ui.connect.inflight"));
 
         if (string.IsNullOrWhiteSpace(request.CloudflareToken))
-            return new ConnectionResult(false, null, null, "Paste your Cloudflare API token first.");
+            return new ConnectionResult(false, null, null, Strings.Get("ui.connect.needcf"));
         if (string.IsNullOrWhiteSpace(request.TelegramBotToken))
-            return new ConnectionResult(false, null, null, "Paste your Telegram bot token first.");
+            return new ConnectionResult(false, null, null, Strings.Get("ui.connect.needtg"));
 
         _running = true;
         foreach (var step in Steps)
@@ -132,7 +158,7 @@ public sealed class ConnectionOrchestrator
             var verified = _settings.Current.Clone();
             verified.CloudflareApiToken = cfToken;
             _settings.Save(verified);
-            Complete(_verifyToken, "Token is active");
+            Complete(_verifyToken, Strings.Get("ui.step.tokenactive"));
 
             current = Begin(_resolveAccount);
             var accounts = await _cloudflare.GetAccountsAsync(cfToken, ct).ConfigureAwait(false);
@@ -143,15 +169,13 @@ public sealed class ConnectionOrchestrator
             current = Begin(_resolveSubdomain);
             var subdomain = await _cloudflare.GetWorkersDevSubdomainAsync(cfToken, account.Id, ct).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(subdomain))
-                throw new InvalidOperationException(
-                    "This account has no workers.dev subdomain yet. Open Cloudflare -> Workers & Pages once to claim one, then run Connect again.");
+                throw new InvalidOperationException(Strings.Get("err.cf.nosubdomain"));
             Complete(_resolveSubdomain, $"{subdomain}.workers.dev");
 
             current = Begin(_deployWorker);
             var proxySecret = settings.ProxySecret;
             if (string.IsNullOrWhiteSpace(proxySecret))
-                throw new InvalidOperationException(
-                    "Could not establish the proxy secret, so the worker would be deployed as an open relay. Deployment stopped.");
+                throw new InvalidOperationException(Strings.Get("err.cf.nosecret"));
             await _cloudflare.UploadWorkerAsync(cfToken, account.Id, workerName, proxySecret, ct).ConfigureAwait(false);
             Complete(_deployWorker, workerName);
 
@@ -161,15 +185,15 @@ public sealed class ConnectionOrchestrator
             if (routed)
                 Complete(_enableRoute, workerUrl);
             else
-                Warn(_enableRoute, "Route not confirmed — continuing");
+                Warn(_enableRoute, Strings.Get("ui.step.routeunconfirmed"));
 
             current = Begin(_probeEdge);
             var reachable = await _cloudflare.ProbeWorkerAsync(workerUrl, proxySecret, ct).ConfigureAwait(false);
             if (reachable)
-                Complete(_probeEdge, "Edge is answering");
+                Complete(_probeEdge, Strings.Get("ui.step.edgeanswering"));
             else
                 // Propagation can lag; the bot check below is the real proof, so this never blocks.
-                Warn(_probeEdge, "Still propagating — continuing");
+                Warn(_probeEdge, Strings.Get("ui.step.propagating"));
 
             // Persist everything Cloudflare-side before touching Telegram.
             settings = _settings.Current.Clone();
@@ -189,8 +213,14 @@ public sealed class ConnectionOrchestrator
             Complete(_verifyBot, $"@{me.Username}");
 
             current = Begin(_startRelay);
+            // The poll loop caches the URL, token and secret it started with, and
+            // StartAsync is a no-op while it is already running. A re-run that changed
+            // any of those has to replace the loop, or the pipeline would report a new
+            // relay while the old one kept polling with the old credentials.
+            if (_bot.IsRunning)
+                await _bot.StopAsync().ConfigureAwait(false);
             await _bot.StartAsync().ConfigureAwait(false);
-            Complete(_startRelay, "Listening for commands");
+            Complete(_startRelay, Strings.Get("ui.step.listening"));
 
             _log.Info($"Relay is up: {workerUrl} as @{me.Username}.");
             return new ConnectionResult(true, workerUrl, me.Username, null);
@@ -198,8 +228,8 @@ public sealed class ConnectionOrchestrator
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             if (current is not null)
-                Fail(current, "Cancelled");
-            return new ConnectionResult(false, null, null, "Connection cancelled.");
+                Fail(current, Strings.Get("ui.step.cancelled"));
+            return new ConnectionResult(false, null, null, Strings.Get("ui.connect.cancelled"));
         }
         catch (Exception ex)
         {

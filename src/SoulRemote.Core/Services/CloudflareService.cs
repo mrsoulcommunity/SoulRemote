@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using SoulRemote.Localization;
 using SoulRemote.Models;
 
 namespace SoulRemote.Services;
@@ -26,6 +27,14 @@ public interface ICloudflareService
 
     /// <summary>Normalises a user-supplied worker name to what Cloudflare accepts.</summary>
     string NormalizeWorkerName(string name);
+
+    /// <summary>
+    /// Asks the deployed worker what public address this machine reaches it from.
+    /// Cloudflare already knows, so this replaces a call to a third-party lookup
+    /// service — one that would go direct over exactly the network the relay exists
+    /// to avoid. Returns null when the worker is older than this endpoint.
+    /// </summary>
+    Task<string?> GetPublicIpAsync(string workerUrl, string proxySecret, CancellationToken ct = default);
 }
 
 public sealed class CloudflareService : ICloudflareService
@@ -49,8 +58,7 @@ public sealed class CloudflareService : ICloudflareService
         using var req = Build(HttpMethod.Get, $"{ApiBase}/user/tokens/verify", apiToken);
         var result = await SendAsync<CfTokenVerify>(req, ct).ConfigureAwait(false);
         if (result is null || !string.Equals(result.Status, "active", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException(
-                "This Cloudflare token is not active. Create one from the \"Edit Cloudflare Workers\" template and paste it again.");
+            throw new InvalidOperationException(Strings.Get("err.cf.inactive"));
         return result;
     }
 
@@ -59,8 +67,7 @@ public sealed class CloudflareService : ICloudflareService
         using var req = Build(HttpMethod.Get, $"{ApiBase}/accounts?per_page=50", apiToken);
         var accounts = await SendAsync<List<CfAccount>>(req, ct).ConfigureAwait(false);
         if (accounts is null || accounts.Count == 0)
-            throw new InvalidOperationException(
-                "The token works but reaches no account. Give it Account -> Workers Scripts -> Edit permission.");
+            throw new InvalidOperationException(Strings.Get("err.cf.noaccount"));
         return accounts;
     }
 
@@ -152,6 +159,33 @@ public sealed class CloudflareService : ICloudflareService
                 await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct).ConfigureAwait(false);
         }
         return false;
+    }
+
+    public async Task<string?> GetPublicIpAsync(string workerUrl, string proxySecret, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(workerUrl))
+            return null;
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"{workerUrl.TrimEnd('/')}/whoami");
+            if (!string.IsNullOrEmpty(proxySecret))
+                req.Headers.TryAddWithoutValidation("X-Proxy-Secret", proxySecret);
+            using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return null;
+            var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            var parsed = JsonSerializer.Deserialize<CfWhoAmI>(body, JsonOptions);
+            return string.IsNullOrWhiteSpace(parsed?.Ip) ? null : parsed!.Ip;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _log.Debug($"Public IP lookup through the worker failed: {ex.Message}");
+            return null;
+        }
     }
 
     public string NormalizeWorkerName(string name)

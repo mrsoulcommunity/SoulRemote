@@ -11,6 +11,16 @@ public sealed class TgResponse<T>
     [JsonPropertyName("result")] public T? Result { get; set; }
     [JsonPropertyName("error_code")] public int? ErrorCode { get; set; }
     [JsonPropertyName("description")] public string? Description { get; set; }
+    [JsonPropertyName("parameters")] public TgResponseParameters? Parameters { get; set; }
+}
+
+/// <summary>Extra instructions Telegram attaches to a failure — chiefly flood control.</summary>
+public sealed class TgResponseParameters
+{
+    /// <summary>Seconds to wait before repeating the request, sent with a 429.</summary>
+    [JsonPropertyName("retry_after")] public int? RetryAfter { get; set; }
+
+    [JsonPropertyName("migrate_to_chat_id")] public long? MigrateToChatId { get; set; }
 }
 
 public sealed class TgUser
@@ -37,6 +47,34 @@ public sealed class TgMessage
     [JsonPropertyName("chat")] public TgChat? Chat { get; set; }
     [JsonPropertyName("date")] public long Date { get; set; }
     [JsonPropertyName("text")] public string? Text { get; set; }
+    [JsonPropertyName("caption")] public string? Caption { get; set; }
+    [JsonPropertyName("document")] public TgDocument? Document { get; set; }
+    [JsonPropertyName("photo")] public List<TgPhotoSize>? Photo { get; set; }
+}
+
+/// <summary>A file attached to an incoming message.</summary>
+public sealed class TgDocument
+{
+    [JsonPropertyName("file_id")] public string FileId { get; set; } = string.Empty;
+    [JsonPropertyName("file_name")] public string? FileName { get; set; }
+    [JsonPropertyName("mime_type")] public string? MimeType { get; set; }
+    [JsonPropertyName("file_size")] public long? FileSize { get; set; }
+}
+
+public sealed class TgPhotoSize
+{
+    [JsonPropertyName("file_id")] public string FileId { get; set; } = string.Empty;
+    [JsonPropertyName("width")] public int Width { get; set; }
+    [JsonPropertyName("height")] public int Height { get; set; }
+    [JsonPropertyName("file_size")] public long? FileSize { get; set; }
+}
+
+/// <summary>What getFile returns: where the file can be fetched from.</summary>
+public sealed class TgFile
+{
+    [JsonPropertyName("file_id")] public string FileId { get; set; } = string.Empty;
+    [JsonPropertyName("file_size")] public long? FileSize { get; set; }
+    [JsonPropertyName("file_path")] public string? FilePath { get; set; }
 }
 
 public sealed class TgCallbackQuery

@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Everything in Soul Remote that does not need Windows lives here: the Telegram
+    and Cloudflare clients, the bot's screens and dispatch, settings, logging and
+    the string catalogue. It targets plain net8.0 rather than net8.0-windows so it
+    can be unit-tested on any machine, including the CI runners and the containers
+    the project is developed in. The WPF app supplies the Windows half through the
+    interfaces declared here.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>SoulRemote</RootNamespace>
+    <AssemblyName>SoulRemote.Core</AssemblyName>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The worker script is embedded straight from cloudflare/worker.js rather than
+      from a copy. There used to be a second copy under Assets/, and nothing checked
+      that the two matched: an edit to one would ship a worker that did not match the
+      one people review. Linking makes drift impossible.
+    -->
+    <EmbeddedResource Include="..\..\cloudflare\worker.js" Link="Assets\worker.js" LogicalName="SoulRemote.Assets.worker.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SoulRemote.Core.Tests" />
+  </ItemGroup>
+
+</Project>

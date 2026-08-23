@@ -1,70 +1,86 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Net;
-using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32;
+using SoulRemote.Localization;
 using WinFormsSysInfo = System.Windows.Forms.SystemInformation;
 
 namespace SoulRemote.Services;
 
-public interface ISystemInfoService
-{
-    Task<string> GetSystemInfoAsync(CancellationToken ct = default);
-    string GetDisks();
-    string GetBattery();
-    string GetTopProcesses(int count = 12);
-    Task<string> GetNetworkAsync(CancellationToken ct = default);
-}
-
 public sealed class SystemInfoService : ISystemInfoService
 {
     private readonly ILogService _log;
-    private readonly HttpClient _http;
+    private readonly ISettingsService _settings;
+    private readonly ICloudflareService _cloudflare;
 
-    public SystemInfoService(ILogService log)
+    // CPU load is a rate, not a reading: it only exists as the difference between two
+    // samples. The previous one is kept so the first /sysinfo after startup still has
+    // something to compare against.
+    private readonly object _cpuLock = new();
+    private (ulong Idle, ulong Total)? _lastCpuSample;
+
+    public SystemInfoService(ILogService log, ISettingsService settings, ICloudflareService cloudflare)
     {
         _log = log;
-        _http = new HttpClient { Timeout = TimeSpan.FromSeconds(6) };
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("SoulRemote/1.0");
+        _settings = settings;
+        _cloudflare = cloudflare;
     }
 
     public async Task<string> GetSystemInfoAsync(CancellationToken ct = default)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("<b>🖥 System Information</b>");
+        sb.AppendLine(Strings.Get("sys.info.title"));
         sb.AppendLine();
-        sb.AppendLine($"<b>Machine:</b> {TextUtil.Html(Environment.MachineName)}");
-        sb.AppendLine($"<b>User:</b> {TextUtil.Html(Environment.UserName)}");
-        sb.AppendLine($"<b>OS:</b> {TextUtil.Html(RuntimeInformation.OSDescription)}");
-        sb.AppendLine($"<b>Architecture:</b> {RuntimeInformation.OSArchitecture}");
-        sb.AppendLine($"<b>CPU:</b> {TextUtil.Html(GetCpuName())} ({Environment.ProcessorCount} logical cores)");
+        TextUtil.AppendField(sb, Strings.Get("sys.info.machine"), TextUtil.Html(Environment.MachineName));
+        TextUtil.AppendField(sb, Strings.Get("sys.info.user"), TextUtil.Html(Environment.UserName));
+        TextUtil.AppendField(sb, Strings.Get("sys.info.os"), TextUtil.Html(RuntimeInformation.OSDescription));
+        TextUtil.AppendField(sb, Strings.Get("sys.info.arch"), RuntimeInformation.OSArchitecture.ToString());
+        TextUtil.AppendField(sb, Strings.Get("sys.info.cpu"),
+            $"{TextUtil.Html(GetCpuName())} ({Strings.Format("sys.info.cores", Environment.ProcessorCount)})");
+
+        if (await SampleCpuLoadAsync(ct).ConfigureAwait(false) is { } load)
+            TextUtil.AppendField(sb, Strings.Get("sys.info.load"), $"{load}%");
 
         var mem = GetMemory();
         if (mem is not null)
         {
             var (totalKb, availKb) = mem.Value;
             var usedPct = totalKb == 0 ? 0 : Math.Round((totalKb - availKb) * 100.0 / totalKb);
-            sb.AppendLine($"<b>RAM:</b> {TextUtil.HumanBytes((totalKb - availKb) * 1024)} / {TextUtil.HumanBytes(totalKb * 1024)} used ({usedPct}%)");
+            TextUtil.AppendField(sb, Strings.Get("sys.info.ram"), Strings.Format("sys.info.ramused",
+                TextUtil.HumanBytes((totalKb - availKb) * 1024), TextUtil.HumanBytes(totalKb * 1024), usedPct));
         }
 
         var uptime = TimeSpan.FromMilliseconds(Environment.TickCount64);
-        sb.AppendLine($"<b>Uptime:</b> {TextUtil.HumanDuration(uptime)}");
-        sb.AppendLine($"<b>Local time:</b> {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        TextUtil.AppendField(sb, Strings.Get("sys.info.uptime"), TextUtil.HumanDuration(uptime));
+        TextUtil.AppendField(sb, Strings.Get("sys.info.localtime"),
+            DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
 
-        await Task.CompletedTask.ConfigureAwait(false);
         return sb.ToString();
     }
 
     public string GetDisks()
     {
         var sb = new StringBuilder();
-        sb.AppendLine("<b>💽 Disks</b>");
+        sb.AppendLine(Strings.Get("sys.disks.title"));
         sb.AppendLine();
-        foreach (var d in DriveInfo.GetDrives())
+        DriveInfo[] drives;
+        try
+        {
+            drives = DriveInfo.GetDrives();
+        }
+        catch (Exception ex)
+        {
+            // Enumerating drives can itself throw (a disconnected network drive, an
+            // I/O fault). Report it rather than letting the whole reply disappear.
+            return sb.AppendLine(Strings.Format("sys.net.error", TextUtil.Html(ex.Message))).ToString();
+        }
+
+        foreach (var d in drives)
         {
             try
             {
@@ -73,7 +89,7 @@ public sealed class SystemInfoService : ISystemInfoService
                 var pct = d.TotalSize == 0 ? 0 : Math.Round(used * 100.0 / d.TotalSize);
                 sb.AppendLine($"<b>{TextUtil.Html(d.Name)}</b> [{TextUtil.Html(d.DriveType.ToString())}] " +
                               $"{TextUtil.HumanBytes(used)} / {TextUtil.HumanBytes(d.TotalSize)} ({pct}%), " +
-                              $"free {TextUtil.HumanBytes(d.TotalFreeSpace)}");
+                              Strings.Format("sys.disks.free", TextUtil.HumanBytes(d.TotalFreeSpace)));
             }
             catch (Exception ex)
             {
@@ -89,55 +105,68 @@ public sealed class SystemInfoService : ISystemInfoService
         {
             var ps = WinFormsSysInfo.PowerStatus;
             var sb = new StringBuilder();
-            sb.AppendLine("<b>🔋 Power</b>");
+            sb.AppendLine(Strings.Get("sys.power.title"));
             sb.AppendLine();
-            sb.AppendLine($"<b>Line:</b> {ps.PowerLineStatus}");
+            TextUtil.AppendField(sb, Strings.Get("sys.power.line"), ps.PowerLineStatus.ToString());
             if (ps.BatteryChargeStatus == System.Windows.Forms.BatteryChargeStatus.NoSystemBattery)
             {
-                sb.AppendLine("<b>Battery:</b> none (desktop).");
+                TextUtil.AppendField(sb, Strings.Get("sys.power.battery"), Strings.Get("sys.power.nobattery"));
             }
             else
             {
                 var pct = ps.BatteryLifePercent; // 0..1 or 255 if unknown
-                if (pct >= 0 && pct <= 1)
-                    sb.AppendLine($"<b>Battery:</b> {Math.Round(pct * 100)}% ({ps.BatteryChargeStatus})");
-                else
-                    sb.AppendLine($"<b>Battery:</b> {ps.BatteryChargeStatus}");
+                TextUtil.AppendField(sb, Strings.Get("sys.power.battery"),
+                    pct is >= 0 and <= 1
+                        ? $"{Math.Round(pct * 100)}% ({ps.BatteryChargeStatus})"
+                        : ps.BatteryChargeStatus.ToString());
                 if (ps.BatteryLifeRemaining > 0)
-                    sb.AppendLine($"<b>Remaining:</b> {TextUtil.HumanDuration(TimeSpan.FromSeconds(ps.BatteryLifeRemaining))}");
+                    TextUtil.AppendField(sb, Strings.Get("sys.power.remaining"),
+                        TextUtil.HumanDuration(TimeSpan.FromSeconds(ps.BatteryLifeRemaining)));
             }
             return sb.ToString();
         }
         catch (Exception ex)
         {
-            return $"Power status unavailable: {TextUtil.Html(ex.Message)}";
+            return Strings.Format("sys.power.unavailable", TextUtil.Html(ex.Message));
         }
     }
 
     public string GetTopProcesses(int count = 12)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"<b>📋 Top {count} processes by memory</b>");
+        sb.AppendLine(Strings.Format("sys.proc.title", count));
         sb.AppendLine();
-        var procs = Process.GetProcesses()
-            .Select(p =>
-            {
-                try { return (p.ProcessName, p.Id, p.WorkingSet64); }
-                catch { return (p.ProcessName, p.Id, 0L); }
-            })
-            .OrderByDescending(x => x.Item3)
-            .Take(count);
-        foreach (var (name, id, ws) in procs)
-            sb.AppendLine($"{TextUtil.Html(name)} (PID {id}) — {TextUtil.HumanBytes(ws)}");
+
+        // Every Process here holds an OS handle. Without the dispose pass this leaks
+        // one per running process on every call, and this one is on a button.
+        var all = Process.GetProcesses();
+        try
+        {
+            var top = all
+                .Select(p =>
+                {
+                    try { return (p.ProcessName, p.Id, Working: p.WorkingSet64); }
+                    catch { return (p.ProcessName, p.Id, Working: 0L); }
+                })
+                .OrderByDescending(x => x.Working)
+                .Take(count);
+            foreach (var (name, id, ws) in top)
+                sb.AppendLine($"{TextUtil.Html(name)} (PID {id}) — {TextUtil.HumanBytes(ws)}");
+        }
+        finally
+        {
+            foreach (var p in all)
+                p.Dispose();
+        }
         return sb.ToString();
     }
 
     public async Task<string> GetNetworkAsync(CancellationToken ct = default)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("<b>🌐 Network</b>");
+        sb.AppendLine(Strings.Get("sys.net.title"));
         sb.AppendLine();
-        sb.AppendLine($"<b>Host:</b> {TextUtil.Html(Dns.GetHostName())}");
+        TextUtil.AppendField(sb, Strings.Get("sys.net.host"), TextUtil.Html(Dns.GetHostName()));
 
         try
         {
@@ -152,25 +181,86 @@ public sealed class SystemInfoService : ISystemInfoService
                         locals.Add($"{addr.Address} ({TextUtil.Html(ni.Name)})");
                 }
             }
-            sb.AppendLine($"<b>Local IPs:</b> {(locals.Count > 0 ? string.Join(", ", locals) : "none")}");
+            TextUtil.AppendField(sb, Strings.Get("sys.net.local"),
+                locals.Count > 0 ? string.Join(", ", locals) : Strings.Get("sys.net.none"));
         }
         catch (Exception ex)
         {
-            sb.AppendLine($"<b>Local IPs:</b> error ({TextUtil.Html(ex.Message)})");
+            TextUtil.AppendField(sb, Strings.Get("sys.net.local"), Strings.Format("sys.net.error", TextUtil.Html(ex.Message)));
         }
 
-        try
-        {
-            var publicIp = await _http.GetStringAsync("https://api.ipify.org", ct).ConfigureAwait(false);
-            sb.AppendLine($"<b>Public IP:</b> {TextUtil.Html(publicIp.Trim())}");
-        }
-        catch
-        {
-            sb.AppendLine("<b>Public IP:</b> unavailable");
-        }
+        // The public address comes from the relay worker, which already sees it.
+        // Asking a third-party lookup service would send a direct request over the
+        // very network this app exists to avoid depending on.
+        var settings = _settings.Current;
+        var publicIp = await _cloudflare.GetPublicIpAsync(settings.WorkerUrl, settings.ProxySecret, ct)
+            .ConfigureAwait(false);
+        TextUtil.AppendField(sb, Strings.Get("sys.net.public"),
+            publicIp is { Length: > 0 } ? TextUtil.Html(publicIp) : Strings.Get("sys.net.unavailable"));
 
         return sb.ToString();
     }
+
+    /// <summary>
+    /// CPU utilisation across all cores, as a percentage, from two samples of the
+    /// kernel's own counters. Returns null on the very first call of a fresh process
+    /// if no baseline could be taken.
+    /// </summary>
+    private async Task<int?> SampleCpuLoadAsync(CancellationToken ct)
+    {
+        try
+        {
+            var first = ReadCpuTimes();
+            if (first is null)
+                return null;
+
+            (ulong Idle, ulong Total)? baseline;
+            lock (_cpuLock)
+                baseline = _lastCpuSample;
+
+            // With no usable baseline, take one over a short window rather than
+            // reporting nothing at all.
+            if (baseline is null)
+            {
+                await Task.Delay(250, ct).ConfigureAwait(false);
+                baseline = first;
+                first = ReadCpuTimes();
+                if (first is null)
+                    return null;
+            }
+
+            var idleDelta = first.Value.Idle - baseline.Value.Idle;
+            var totalDelta = first.Value.Total - baseline.Value.Total;
+
+            lock (_cpuLock)
+                _lastCpuSample = first;
+
+            if (totalDelta == 0)
+                return null;
+            var busy = 100.0 * (totalDelta - idleDelta) / totalDelta;
+            return (int)Math.Round(Math.Clamp(busy, 0, 100));
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            _log.Debug($"CPU load unavailable: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static (ulong Idle, ulong Total)? ReadCpuTimes()
+    {
+        if (!GetSystemTimes(out var idle, out var kernel, out var user))
+            return null;
+        var idleTicks = ToTicks(idle);
+        var kernelTicks = ToTicks(kernel);
+        var userTicks = ToTicks(user);
+        // Kernel time already includes idle time, so the total is kernel + user.
+        return (idleTicks, kernelTicks + userTicks);
+    }
+
+    private static ulong ToTicks(FILETIME time) =>
+        ((ulong)(uint)time.dwHighDateTime << 32) | (uint)time.dwLowDateTime;
 
     private static string GetCpuName()
     {
@@ -208,7 +298,18 @@ public sealed class SystemInfoService : ISystemInfoService
         public ulong ullAvailExtendedVirtual;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FILETIME
+    {
+        public int dwLowDateTime;
+        public int dwHighDateTime;
+    }
+
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetSystemTimes(out FILETIME idleTime, out FILETIME kernelTime, out FILETIME userTime);
 }

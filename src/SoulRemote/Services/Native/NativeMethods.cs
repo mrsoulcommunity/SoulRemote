@@ -18,6 +18,16 @@ internal static class NativeMethods
         [MarshalAs(UnmanagedType.Bool)] bool forceCritical,
         [MarshalAs(UnmanagedType.Bool)] bool disableWakeEvent);
 
+    // ---- Broadcast with a deadline ----
+    // SendMessage to HWND_BROADCAST waits for every top-level window; one that is not
+    // pumping messages would block the caller indefinitely. This variant gives up.
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    internal static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam,
+        uint flags, uint timeoutMilliseconds, out IntPtr result);
+
+    internal const uint SMTO_ABORTIFHUNG = 0x0002;
+
     // ---- Media / volume keys via synthesized keystrokes ----
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);

@@ -11,6 +11,7 @@ global using Color = System.Windows.Media.Color;
 global using UserControl = System.Windows.Controls.UserControl;
 global using Binding = System.Windows.Data.Binding;
 global using Brush = System.Windows.Media.Brush;
+global using FlowDirection = System.Windows.FlowDirection;
 
 // The app's own relay-hop state clashes with System.Windows.Forms.LinkState
 // (a link-label concept this app never uses), so the name is pinned here too.

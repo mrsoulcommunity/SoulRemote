@@ -1,4 +1,5 @@
 using System.Windows;
+using SoulRemote.Localization;
 using SoulRemote.Models;
 using SoulRemote.Services;
 
@@ -35,7 +36,15 @@ public sealed class ConnectViewModel : ViewModelBase
         OpenBotFatherCommand = new RelayCommand(() => OpenUrl("https://t.me/BotFather"));
 
         _services.Orchestrator.Changed += OnOrchestratorChanged;
+        Strings.LanguageChanged += OnLanguageChanged;
     }
+
+    /// <summary>These two hints are computed here, so they do not follow a {p:T} binding.</summary>
+    private void OnLanguageChanged() => UiThread.Post(() =>
+    {
+        OnPropertyChanged(nameof(CloudflareHint));
+        OnPropertyChanged(nameof(TelegramHint));
+    });
 
     public IReadOnlyList<ConnectionStep> Steps => _services.Orchestrator.Steps;
 
@@ -61,13 +70,13 @@ public sealed class ConnectViewModel : ViewModelBase
     private bool _hasSavedCloudflareToken;
     private bool _hasSavedTelegramToken;
 
-    public string CloudflareHint => _hasSavedCloudflareToken
-        ? "A token is already saved. Leave this blank to keep it, or paste a new one to replace it."
-        : "Create one with the \u201cEdit Cloudflare Workers\u201d template.";
+    public string CloudflareHint => Strings.Get(_hasSavedCloudflareToken
+        ? "ui.connect.cf.hint.saved"
+        : "ui.connect.cf.hint.new");
 
-    public string TelegramHint => _hasSavedTelegramToken
-        ? "A bot token is already saved. Leave this blank to keep it, or paste a new one to replace it."
-        : "Ask @BotFather for /newbot, then paste the HTTP API token.";
+    public string TelegramHint => Strings.Get(_hasSavedTelegramToken
+        ? "ui.connect.tg.hint.saved"
+        : "ui.connect.tg.hint.new");
 
     /// <summary>Either field may be blank when a saved token can stand in for it.</summary>
     public bool CanConnect =>
@@ -109,7 +118,7 @@ public sealed class ConnectViewModel : ViewModelBase
     {
         IsBusy = true;
         Outcome = LinkState.Working;
-        Message = "Bringing the relay up…";
+        Message = Strings.Get("ui.connect.working");
 
         _cts?.Dispose();
         _cts = new CancellationTokenSource();
@@ -135,12 +144,12 @@ public sealed class ConnectViewModel : ViewModelBase
                 OnPropertyChanged(nameof(TelegramHint));
                 WorkerUrl = result.WorkerUrl ?? string.Empty;
                 Outcome = LinkState.Online;
-                Message = $"Connected as @{result.BotUsername}. Open Telegram and send /pair with the code on the dashboard.";
+                Message = Strings.Format("ui.connect.done", result.BotUsername);
             }
             else
             {
                 Outcome = LinkState.Fault;
-                Message = result.Error ?? "Connection failed.";
+                Message = result.Error ?? Strings.Get("ui.connect.failed");
             }
         }
         finally
@@ -159,8 +168,8 @@ public sealed class ConnectViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Could not open the browser: {ex.Message}", "Soul Remote",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(Strings.Format("ui.connect.browserfailed", ex.Message),
+                Strings.Get("ui.dialog.title"), MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 }

@@ -35,6 +35,15 @@ public sealed class AppSettings
     /// <summary>Chat IDs allowed to control this machine.</summary>
     public List<long> AuthorizedChatIds { get; set; } = new();
 
+    /// <summary>
+    /// Display names for the paired chats, keyed by chat id as a string so the JSON
+    /// stays readable. Purely cosmetic: the whitelist above is what grants access, and
+    /// a chat with no name here is still authorized. It exists because a dashboard
+    /// listing "6291445123  ·  884120993" tells the owner nothing about which of their
+    /// devices they would be revoking.
+    /// </summary>
+    public Dictionary<string, string> ChatNames { get; set; } = new();
+
     // ---- Behaviour ----
     /// <summary>Master switch: allow arbitrary shell command execution via /cmd.</summary>
     public bool AllowShellCommands { get; set; } = false;
@@ -72,6 +81,13 @@ public sealed class AppSettings
     [JsonIgnore]
     public AppLanguage LanguageOrDefault => AppLanguageExtensions.Parse(Language);
 
+    /// <summary>The remembered name for a chat, or its id when there is none.</summary>
+    public string NameFor(long chatId)
+    {
+        var key = chatId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return ChatNames.TryGetValue(key, out var name) && !string.IsNullOrWhiteSpace(name) ? name : key;
+    }
+
     [JsonIgnore]
     public bool HasCloudflare => !string.IsNullOrWhiteSpace(CloudflareApiToken) && !string.IsNullOrWhiteSpace(WorkerUrl);
 
@@ -90,6 +106,12 @@ public sealed class AppSettings
         if (string.IsNullOrWhiteSpace(WorkerName))
             WorkerName = "soul-remote-proxy";
         AuthorizedChatIds = AuthorizedChatIds.Distinct().ToList();
+
+        // Names for chats that are no longer paired are dead weight, and keeping them
+        // would quietly re-label a chat id that later belonged to someone else.
+        var live = AuthorizedChatIds.Select(id => id.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToHashSet();
+        foreach (var stale in ChatNames.Keys.Where(k => !live.Contains(k)).ToArray())
+            ChatNames.Remove(stale);
     }
 
     public AppSettings Clone()
@@ -106,6 +128,7 @@ public sealed class AppSettings
             TelegramBotToken = TelegramBotToken,
             TelegramBotUsername = TelegramBotUsername,
             AuthorizedChatIds = new List<long>(AuthorizedChatIds),
+            ChatNames = new Dictionary<string, string>(ChatNames),
             AllowShellCommands = AllowShellCommands,
             AllowFileAccess = AllowFileAccess,
             StartWithWindows = StartWithWindows,

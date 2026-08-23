@@ -383,4 +383,38 @@
         </Style.Triggers>
     </Style>
 
+    <!--
+        Filter chips: a segmented control built from radio buttons. Shared by the
+        activity filter and the language picker, which are the same interaction —
+        a small set of mutually exclusive options, none of them destructive.
+    -->
+    <Style x:Key="FilterChip" TargetType="RadioButton">
+        <Setter Property="Foreground" Value="{StaticResource InkDimBrush}" />
+        <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Margin" Value="0,0,8,0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="Bd" Background="Transparent" CornerRadius="6" Padding="14,7"
+                            BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
+                        <ContentPresenter VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverWashBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource SignalWashBrush}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource SignalBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource SignalBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>

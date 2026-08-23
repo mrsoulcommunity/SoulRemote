@@ -1051,7 +1051,7 @@ public sealed class CommandRouter
         var provided = Encoding.UTF8.GetBytes((arg ?? string.Empty).Trim());
         if (CryptographicOperations.FixedTimeEquals(provided, Encoding.UTF8.GetBytes(expected)))
         {
-            if (!Authorize(chatId))
+            if (!Authorize(chatId, DisplayNameOf(msg)))
             {
                 // The code is deliberately NOT consumed here: the chat is not paired, so
                 // burning it would leave the user with neither access nor a usable code.
@@ -1093,17 +1093,35 @@ public sealed class CommandRouter
     /// the caller must not report success in that case, because the pairing would be
     /// forgotten on the next restart while the single-use code had already been spent.
     /// </summary>
-    private bool Authorize(long chatId)
+    private bool Authorize(long chatId, string? displayName)
     {
         if (_settings.Current.AuthorizedChatIds.Contains(chatId))
             return true;
         // Clone before mutating: the poll thread reads the live list.
         var settings = _settings.Current.Clone();
         settings.AuthorizedChatIds.Add(chatId);
+        if (!string.IsNullOrWhiteSpace(displayName))
+            settings.ChatNames[chatId.ToString(CultureInfo.InvariantCulture)] = displayName!;
         if (!_settings.Save(settings))
             return false;
         ChatAuthorized?.Invoke(chatId);
         return true;
+    }
+
+    /// <summary>
+    /// A human-readable name for whoever just paired, so the desktop can show
+    /// "Sara (@sara_k)" instead of a bare chat id when the owner comes to revoke one.
+    /// </summary>
+    private static string? DisplayNameOf(TgMessage msg)
+    {
+        var person = msg.From;
+        var name = msg.Chat?.Title
+                   ?? person?.FirstName
+                   ?? msg.Chat?.FirstName;
+        var handle = person?.Username ?? msg.Chat?.Username;
+        if (string.IsNullOrWhiteSpace(name))
+            return string.IsNullOrWhiteSpace(handle) ? null : "@" + handle;
+        return string.IsNullOrWhiteSpace(handle) ? name : $"{name} (@{handle})";
     }
 
     /// <summary>Drops any per-chat state for a chat the desktop app has just un-paired.</summary>

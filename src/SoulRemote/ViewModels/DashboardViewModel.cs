@@ -1,4 +1,6 @@
+using System.Collections.ObjectModel;
 using System.Windows;
+using SoulRemote.Localization;
 using SoulRemote.Models;
 using SoulRemote.Services;
 using SoulRemote.Services.Security;
@@ -52,23 +54,24 @@ public sealed class DashboardViewModel : ViewModelBase
 
     public string PcDetail => Environment.MachineName;
 
-    private string _edgeDetail = "not deployed";
+    private string _edgeDetail = string.Empty;
     public string EdgeDetail { get => _edgeDetail; private set => SetProperty(ref _edgeDetail, value); }
 
-    private string _telegramDetail = "no bot";
+    private string _telegramDetail = string.Empty;
     public string TelegramDetail { get => _telegramDetail; private set => SetProperty(ref _telegramDetail, value); }
 
     public bool AnimationsEnabled => _services.Settings.Current.ReduceMotion == false;
 
     // ---- headline ----
 
-    private string _headline = "Relay offline";
+    private string _headline = string.Empty;
     public string Headline { get => _headline; private set => SetProperty(ref _headline, value); }
 
-    private string _subhead = "Connect Cloudflare and Telegram to start.";
+    private string _subhead = string.Empty;
     public string Subhead { get => _subhead; private set => SetProperty(ref _subhead, value); }
 
     private LinkState _overall = LinkState.Idle;
+
     public LinkState Overall { get => _overall; private set => SetProperty(ref _overall, value); }
 
     // ---- telemetry ----
@@ -94,6 +97,11 @@ public sealed class DashboardViewModel : ViewModelBase
 
     private string _chatList = string.Empty;
     public string ChatList { get => _chatList; private set => SetProperty(ref _chatList, value); }
+
+    /// <summary>Each paired chat as its own row, so one can be revoked without the rest.</summary>
+    public ObservableCollection<PairedChatViewModel> PairedChats { get; } = new();
+
+    public bool HasPairedChats => PairedChats.Count > 0;
 
     // ---- pairing ----
 
@@ -136,7 +144,7 @@ public sealed class DashboardViewModel : ViewModelBase
         var chats = _services.Settings.Current.AuthorizedChatIds.ToArray();
         if (chats.Length == 0)
         {
-            Subhead = "Pair a Telegram chat first — send /pair with the code below.";
+            Subhead = Strings.Get("ui.dash.test.nochats");
             return;
         }
         foreach (var chat in chats)
@@ -144,15 +152,15 @@ public sealed class DashboardViewModel : ViewModelBase
             try
             {
                 await _services.Telegram.SendMessageAsync(chat,
-                    $"🛰 Test from <b>{TextUtil.Html(Environment.MachineName)}</b> — the relay is working.");
+                    Strings.Format("bot.test", TextUtil.Html(Environment.MachineName)));
             }
             catch (Exception ex)
             {
-                Subhead = $"Test message failed: {ex.Message}";
+                Subhead = Strings.Format("ui.dash.test.failed", ex.Message);
                 return;
             }
         }
-        Subhead = "Test message delivered.";
+        Subhead = Strings.Get("ui.dash.test.sent");
     }
 
     private void GeneratePairingCode()
@@ -170,14 +178,35 @@ public sealed class DashboardViewModel : ViewModelBase
     private void RevokeAll()
     {
         var answer = MessageBox.Show(
-            "Revoke every paired Telegram chat? They will need a new pairing code to control this machine.",
-            "Soul Remote", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            Strings.Get("ui.dash.revoke.confirm"), Strings.Get("ui.dialog.title"),
+            MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (answer != MessageBoxResult.Yes)
             return;
 
         var s = _services.Settings.Current.Clone();
+        foreach (var id in s.AuthorizedChatIds)
+            _services.Router.Forget(id);
         s.AuthorizedChatIds.Clear();
+        s.ChatNames.Clear();
         _services.Settings.Save(s);
+        Refresh();
+    }
+
+    private void RevokeOne(long chatId)
+    {
+        var current = _services.Settings.Current;
+        var answer = MessageBox.Show(
+            Strings.Format("ui.dash.remove.confirm", current.NameFor(chatId)), Strings.Get("ui.dialog.title"),
+            MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes)
+            return;
+
+        var s = current.Clone();
+        s.AuthorizedChatIds.Remove(chatId);
+        _services.Settings.Save(s);
+        // Drop anything the router still holds for that chat: a half-finished prompt
+        // or a folder listing must not survive the chat losing access.
+        _services.Router.Forget(chatId);
         Refresh();
     }
 
@@ -227,49 +256,55 @@ public sealed class DashboardViewModel : ViewModelBase
         TelegramLive = running;
 
         EdgeDetail = string.IsNullOrEmpty(s.WorkerUrl)
-            ? "not deployed"
+            ? Strings.Get("ui.dash.notdeployed")
             : s.WorkerUrl.Replace("https://", string.Empty);
-        TelegramDetail = string.IsNullOrEmpty(s.TelegramBotUsername) ? "no bot" : "@" + s.TelegramBotUsername;
+        TelegramDetail = string.IsNullOrEmpty(s.TelegramBotUsername)
+            ? Strings.Get("ui.dash.nobot") : "@" + s.TelegramBotUsername;
         BotHandle = string.IsNullOrEmpty(s.TelegramBotUsername) ? "—" : "@" + s.TelegramBotUsername;
 
         var ids = s.AuthorizedChatIds.ToArray();
         ChatCount = ids.Length;
-        ChatList = ids.Length == 0 ? "No chats paired yet" : string.Join("  ·  ", ids);
+        ChatList = ids.Length == 0 ? Strings.Get("ui.dash.nochats") : string.Join("  ·  ", ids);
+
+        PairedChats.Clear();
+        foreach (var id in ids)
+            PairedChats.Add(new PairedChatViewModel(id, s.NameFor(id), RevokeOne));
+        OnPropertyChanged(nameof(HasPairedChats));
 
         CommandCount = _services.Router.CommandsHandled;
         var up = TimeSpan.FromMilliseconds(Environment.TickCount64);
         Uptime = TextUtil.HumanDuration(up);
-        BootedAt = "since " + DateTime.Now.Subtract(up).ToString("d MMM, HH:mm");
+        BootedAt = Strings.Format("ui.dash.since", DateTime.Now.Subtract(up).ToString("d MMM, HH:mm"));
         IsRelayRunning = running;
         OnPropertyChanged(nameof(AnimationsEnabled));
 
         if (running)
         {
             Overall = LinkState.Online;
-            Headline = "Relay online";
+            Headline = Strings.Get("ui.status.online");
             Subhead = _services.Bot.LastError is { Length: > 0 } warn
-                ? $"Listening, with a warning: {warn}"
-                : "Listening for commands from your paired chats.";
+                ? Strings.Format("ui.dash.sub.warning", warn)
+                : Strings.Get("ui.dash.sub.listening");
         }
         else if (starting)
         {
             Overall = LinkState.Working;
-            Headline = "Connecting";
-            Subhead = "Bringing the relay up through Cloudflare…";
+            Headline = Strings.Get("ui.status.connecting");
+            Subhead = Strings.Get("ui.dash.sub.connecting");
         }
         else if (fault)
         {
             Overall = LinkState.Fault;
-            Headline = "Link fault";
-            Subhead = _services.Bot.LastError ?? "The relay stopped unexpectedly.";
+            Headline = Strings.Get("ui.status.fault");
+            Subhead = _services.Bot.LastError ?? Strings.Get("ui.dash.sub.fault");
         }
         else
         {
             Overall = LinkState.Idle;
-            Headline = "Relay offline";
-            Subhead = s.HasCloudflare && s.HasTelegram
-                ? "Press Start relay to begin listening."
-                : "Connect Cloudflare and Telegram to start.";
+            Headline = Strings.Get("ui.status.offline");
+            Subhead = Strings.Get(s.HasCloudflare && s.HasTelegram
+                ? "ui.dash.sub.ready"
+                : "ui.dash.sub.notready");
         }
     }
 }

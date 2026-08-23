@@ -1,6 +1,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using SoulRemote.Localization;
 using SoulRemote.Services;
 using SoulRemote.ViewModels;
 
@@ -24,8 +25,8 @@ public partial class App : Application
         _singleInstanceMutex = new Mutex(true, "SoulRemote.SingleInstance.9F16", out var isNew);
         if (!isNew)
         {
-            MessageBox.Show("Soul Remote is already running (check the system tray).",
-                "Soul Remote", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(Strings.Get("ui.dialog.alreadyrunning"),
+                Strings.Get("ui.dialog.title"), MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown();
             return;
         }
@@ -36,7 +37,7 @@ public partial class App : Application
         DispatcherUnhandledException += (_, args) =>
         {
             _services?.Log.Error("Unhandled UI exception", args.Exception);
-            MessageBox.Show(args.Exception.Message, "Soul Remote — error",
+            MessageBox.Show(args.Exception.Message, Strings.Get("ui.dialog.errortitle"),
                 MessageBoxButton.OK, MessageBoxImage.Error);
             args.Handled = true;
         };

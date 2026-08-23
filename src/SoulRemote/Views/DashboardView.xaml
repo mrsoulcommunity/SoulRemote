@@ -2,7 +2,8 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:SoulRemote.ViewModels"
-             xmlns:ctrl="clr-namespace:SoulRemote.Controls">
+             xmlns:ctrl="clr-namespace:SoulRemote.Controls"
+             xmlns:p="clr-namespace:SoulRemote.Platform">
 
     <UserControl.Resources>
         <vm:LinkStateToBrushConverter x:Key="StateBrush" />
@@ -42,15 +43,15 @@
                                     AnimationsEnabled="{Binding AnimationsEnabled}" />
 
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,0">
-                        <Button Style="{StaticResource PrimaryButton}" Content="Start relay"
+                        <Button Style="{StaticResource PrimaryButton}" Content="{p:T ui.dash.start}"
                                 Command="{Binding StartCommand}" Margin="0,0,10,0"
                                 Visibility="{Binding IsRelayRunning, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}" />
-                        <Button Style="{StaticResource GhostButton}" Content="Stop relay"
+                        <Button Style="{StaticResource GhostButton}" Content="{p:T ui.dash.stop}"
                                 Command="{Binding StopCommand}" Margin="0,0,10,0"
                                 Visibility="{Binding IsRelayRunning, Converter={StaticResource BoolToVis}}" />
-                        <Button Style="{StaticResource GhostButton}" Content="Send test message"
+                        <Button Style="{StaticResource GhostButton}" Content="{p:T ui.dash.test}"
                                 Command="{Binding TestMessageCommand}" Margin="0,0,10,0" />
-                        <Button Style="{StaticResource GhostButton}" Content="Lock this PC"
+                        <Button Style="{StaticResource GhostButton}" Content="{p:T ui.dash.lockpc}"
                                 Command="{Binding LockCommand}" />
                     </StackPanel>
                 </StackPanel>
@@ -67,7 +68,7 @@
                 <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,6,12">
                     <StackPanel>
                         <TextBlock Text="{Binding CommandCount}" Style="{StaticResource StatValue}" />
-                        <TextBlock Text="COMMANDS RUN" Style="{StaticResource StatLabel}" />
+                        <TextBlock Text="{p:T ui.dash.stat.commands}" Style="{StaticResource StatLabel}" />
                         <TextBlock Text="{Binding LastCommand}" Style="{StaticResource DataDim}" Margin="0,8,0,0" />
                     </StackPanel>
                 </Border>
@@ -75,7 +76,7 @@
                 <Border Grid.Column="1" Style="{StaticResource Card}" Margin="6,0,6,12">
                     <StackPanel>
                         <TextBlock Text="{Binding ChatCount}" Style="{StaticResource StatValue}" />
-                        <TextBlock Text="PAIRED CHATS" Style="{StaticResource StatLabel}" />
+                        <TextBlock Text="{p:T ui.dash.stat.chats}" Style="{StaticResource StatLabel}" />
                         <TextBlock Text="{Binding ChatList}" Style="{StaticResource DataDim}" Margin="0,8,0,0" />
                     </StackPanel>
                 </Border>
@@ -83,7 +84,7 @@
                 <Border Grid.Column="2" Style="{StaticResource Card}" Margin="6,0,0,12">
                     <StackPanel>
                         <TextBlock Text="{Binding Uptime}" Style="{StaticResource StatValue}" />
-                        <TextBlock Text="MACHINE UPTIME" Style="{StaticResource StatLabel}" />
+                        <TextBlock Text="{p:T ui.dash.stat.uptime}" Style="{StaticResource StatLabel}" />
                         <TextBlock Text="{Binding BootedAt}" Style="{StaticResource DataDim}" Margin="0,8,0,0" />
                     </StackPanel>
                 </Border>
@@ -98,9 +99,9 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                        <TextBlock Text="PAIR A CHAT" Style="{StaticResource Eyebrow}" />
+                        <TextBlock Text="{p:T ui.dash.pair.title}" Style="{StaticResource Eyebrow}" />
                         <TextBlock Style="{StaticResource BodyDim}" Margin="0,8,0,0"
-                                   Text="Open your bot in Telegram and send this command. The code works once, then a new one is issued." />
+                                   Text="{p:T ui.dash.pair.help}" />
                         <Border Style="{StaticResource CardInset}" Margin="0,14,20,0" HorizontalAlignment="Left">
                             <TextBlock FontFamily="{StaticResource DataFont}" FontSize="20">
                                 <Run Text="/pair " Foreground="{StaticResource InkFaintBrush}" />
@@ -110,11 +111,44 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Bottom">
-                        <Button Style="{StaticResource GhostButton}" Content="Copy" Command="{Binding CopyCodeCommand}" />
-                        <Button Style="{StaticResource GhostButton}" Content="New code" Command="{Binding NewCodeCommand}" Margin="0,8,0,0" />
-                        <Button Style="{StaticResource DangerButton}" Content="Revoke all" Command="{Binding RevokeAllCommand}" Margin="0,8,0,0" />
+                        <Button Style="{StaticResource GhostButton}" Content="{p:T ui.dash.copy}" Command="{Binding CopyCodeCommand}" />
+                        <Button Style="{StaticResource GhostButton}" Content="{p:T ui.dash.newcode}" Command="{Binding NewCodeCommand}" Margin="0,8,0,0" />
                     </StackPanel>
                 </Grid>
+            </Border>
+
+            <!-- ===== Who is paired =====
+                 One row per chat, each revocable on its own. A stolen phone should cost
+                 you that one device, not every device you have ever paired. -->
+            <Border Style="{StaticResource Card}"
+                    Visibility="{Binding HasPairedChats, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <Grid>
+                        <TextBlock Text="{p:T ui.dash.pairedlist}" Style="{StaticResource Eyebrow}"
+                                   VerticalAlignment="Center" HorizontalAlignment="Left" />
+                        <Button Style="{StaticResource DangerButton}" Content="{p:T ui.dash.revokeall}"
+                                HorizontalAlignment="Right" Command="{Binding RevokeAllCommand}" />
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{Binding PairedChats}" Margin="0,14,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource CardInset}" Margin="0,0,0,8">
+                                    <Grid>
+                                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Left">
+                                            <TextBlock Text="{Binding Label}" Style="{StaticResource Body}"
+                                                       Visibility="{Binding HasName, Converter={StaticResource BoolToVis}}" />
+                                            <TextBlock Text="{Binding IdText}" Style="{StaticResource DataDim}" />
+                                        </StackPanel>
+                                        <Button Style="{StaticResource GhostButton}" Content="{Binding RemoveText}"
+                                                HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                Command="{Binding RemoveCommand}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
             </Border>
 
         </StackPanel>

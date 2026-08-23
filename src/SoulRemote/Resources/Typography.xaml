@@ -10,14 +10,20 @@
                lines, telemetry. If a value came from a machine, it is monospaced.
 
     Every family lists fallbacks so the app degrades cleanly on older Windows.
+
+    Persian: neither Bahnschrift nor Consolas carries Arabic-script glyphs, and
+    leaving that to WPF's automatic fallback picks whatever it happens to find.
+    Each stack therefore ends in a face that does have them — Segoe UI on Windows
+    10/11, Tahoma everywhere older — so Persian renders in a chosen face rather
+    than an arbitrary one, and the layout does not shift when the language does.
 -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=System.Runtime">
 
-    <FontFamily x:Key="DisplayFont">Bahnschrift, Segoe UI Variable Display, Segoe UI</FontFamily>
+    <FontFamily x:Key="DisplayFont">Bahnschrift, Segoe UI Variable Display, Segoe UI, Tahoma</FontFamily>
     <FontFamily x:Key="BodyFont">Segoe UI Variable Text, Segoe UI, Tahoma</FontFamily>
-    <FontFamily x:Key="DataFont">Consolas, Cascadia Mono, Courier New</FontFamily>
+    <FontFamily x:Key="DataFont">Consolas, Cascadia Mono, Courier New, Tahoma</FontFamily>
 
     <!-- Type scale. Deliberate steps, not a linear ramp. -->
     <sys:Double x:Key="SizeMicro">10</sys:Double>

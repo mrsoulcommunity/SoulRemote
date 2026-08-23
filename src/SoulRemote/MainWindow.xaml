@@ -3,7 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:SoulRemote.ViewModels"
         xmlns:views="clr-namespace:SoulRemote.Views"
+        xmlns:p="clr-namespace:SoulRemote.Platform"
         Title="Soul Remote" Height="760" Width="1120"
+        FlowDirection="{p:FlowDirection}"
         MinHeight="620" MinWidth="960"
         Background="{StaticResource VoidBrush}"
         WindowStartupLocation="CenterScreen"
@@ -53,35 +55,35 @@
 
                     <!-- Wordmark -->
                     <StackPanel Grid.Row="0" Margin="22,26,22,26">
-                        <TextBlock Text="SOUL REMOTE" FontFamily="{StaticResource DisplayFont}"
+                        <TextBlock Text="{p:T ui.app.name}" FontFamily="{StaticResource DisplayFont}"
                                    FontSize="16" FontWeight="Bold" Foreground="{StaticResource InkBrush}" />
-                        <TextBlock Text="relay console" Style="{StaticResource DataDim}" Margin="0,3,0,0" />
+                        <TextBlock Text="{p:T ui.app.tagline}" Style="{StaticResource DataDim}" Margin="0,3,0,0" />
                     </StackPanel>
 
                     <StackPanel Grid.Row="1" Margin="0,4,0,0">
-                        <RadioButton Style="{StaticResource NavItem}" Content="Dashboard"
+                        <RadioButton Style="{StaticResource NavItem}" Content="{p:T ui.nav.dashboard}"
                                      GroupName="Nav"
                                      Command="{Binding NavigateCommand}" CommandParameter="dashboard"
                                      IsChecked="{Binding CurrentKey, Mode=OneWay, Converter={StaticResource Equals}, ConverterParameter=dashboard}" />
-                        <RadioButton Style="{StaticResource NavItem}" Content="Connect"
+                        <RadioButton Style="{StaticResource NavItem}" Content="{p:T ui.nav.connect}"
                                      GroupName="Nav"
                                      Command="{Binding NavigateCommand}" CommandParameter="connect"
                                      IsChecked="{Binding CurrentKey, Mode=OneWay, Converter={StaticResource Equals}, ConverterParameter=connect}" />
-                        <RadioButton Style="{StaticResource NavItem}" Content="Settings"
+                        <RadioButton Style="{StaticResource NavItem}" Content="{p:T ui.nav.settings}"
                                      GroupName="Nav"
                                      Command="{Binding NavigateCommand}" CommandParameter="settings"
                                      IsChecked="{Binding CurrentKey, Mode=OneWay, Converter={StaticResource Equals}, ConverterParameter=settings}" />
-                        <RadioButton Style="{StaticResource NavItem}" Content="Activity"
+                        <RadioButton Style="{StaticResource NavItem}" Content="{p:T ui.nav.logs}"
                                      GroupName="Nav"
                                      Command="{Binding NavigateCommand}" CommandParameter="logs"
                                      IsChecked="{Binding CurrentKey, Mode=OneWay, Converter={StaticResource Equals}, ConverterParameter=logs}" />
 
-                        <TextBlock Text="QUICK CONTROLS" Style="{StaticResource Eyebrow}" Margin="22,22,22,8" />
-                        <Button Style="{StaticResource GhostButton}" Content="Lock" Margin="16,4"
+                        <TextBlock Text="{p:T ui.quick.title}" Style="{StaticResource Eyebrow}" Margin="22,22,22,8" />
+                        <Button Style="{StaticResource GhostButton}" Content="{p:T ui.quick.lock}" Margin="16,4"
                                 Command="{Binding LockCommand}" />
-                        <Button Style="{StaticResource GhostButton}" Content="Sleep" Margin="16,4"
+                        <Button Style="{StaticResource GhostButton}" Content="{p:T ui.quick.sleep}" Margin="16,4"
                                 Command="{Binding SleepCommand}" />
-                        <Button Style="{StaticResource GhostButton}" Content="Display off" Margin="16,4"
+                        <Button Style="{StaticResource GhostButton}" Content="{p:T ui.quick.display}" Margin="16,4"
                                 Command="{Binding DisplayOffCommand}" />
                     </StackPanel>
 
@@ -123,11 +125,11 @@
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                                 WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button Style="{StaticResource CaptionButton}" Content="&#xE921;"
-                                Click="Minimize_Click" ToolTip="Minimise" />
+                                Click="Minimize_Click" ToolTip="{p:T ui.chrome.minimise}" />
                         <Button Style="{StaticResource CaptionButton}" Content="&#xE922;"
-                                Click="Maximize_Click" ToolTip="Maximise" />
+                                Click="Maximize_Click" ToolTip="{p:T ui.chrome.maximise}" />
                         <Button Style="{StaticResource CloseButton}" Content="&#xE8BB;"
-                                Click="Close_Click" ToolTip="Hide to tray" />
+                                Click="Close_Click" ToolTip="{p:T ui.chrome.hide}" />
                     </StackPanel>
                 </Grid>
 

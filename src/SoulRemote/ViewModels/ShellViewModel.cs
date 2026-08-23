@@ -1,4 +1,5 @@
 using System.Reflection;
+using SoulRemote.Localization;
 using SoulRemote.Services;
 
 namespace SoulRemote.ViewModels;
@@ -33,7 +34,7 @@ public sealed class ShellViewModel : ViewModelBase
         private set => SetProperty(ref _currentKey, value);
     }
 
-    private string _statusText = "Offline";
+    private string _statusText = string.Empty;
     public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
 
     private Models.LinkState _statusState = Models.LinkState.Idle;
@@ -51,13 +52,13 @@ public sealed class ShellViewModel : ViewModelBase
     public string QuickResult { get => _quickResult; private set => SetProperty(ref _quickResult, value); }
 
     /// <summary>Page name shown in the title bar, which is otherwise dead space.</summary>
-    public string Crumb => CurrentKey switch
+    public string Crumb => Strings.Get(CurrentKey switch
     {
-        "connect" => "CONNECT",
-        "settings" => "SETTINGS",
-        "logs" => "ACTIVITY",
-        _ => "DASHBOARD",
-    };
+        "connect" => "ui.crumb.connect",
+        "settings" => "ui.crumb.settings",
+        "logs" => "ui.crumb.logs",
+        _ => "ui.crumb.dashboard",
+    });
 
     public ShellViewModel(AppServices services)
     {
@@ -78,8 +79,32 @@ public sealed class ShellViewModel : ViewModelBase
         Navigate(configured ? "dashboard" : "connect");
 
         _services.Bot.StateChanged += OnBotStateChanged;
+
+        // A language change reaches here from two directions — the Settings page and
+        // the button in the Telegram menu — so the shell listens for the change itself
+        // rather than either caller having to remember to tell it.
+        Strings.LanguageChanged += OnLanguageChanged;
+        _services.Router.LanguageChanged += OnRouterLanguageChanged;
+
         UpdateStatus();
     }
+
+    private void OnRouterLanguageChanged(AppLanguage language) => UiThread.Post(() =>
+    {
+        Strings.Use(language);
+        Settings.NotifyLanguageChanged();
+    });
+
+    private void OnLanguageChanged() => UiThread.Post(() =>
+    {
+        // Loc drives every {p:T} binding in the window; these three are computed in
+        // C# and would otherwise keep the wording they were built with.
+        Localization.Loc.Instance.Refresh();
+        _services.Orchestrator.RefreshLanguage();
+        OnPropertyChanged(nameof(Crumb));
+        UpdateStatus();
+        Dashboard.Refresh();
+    });
 
     public void Navigate(string key)
     {
@@ -111,19 +136,19 @@ public sealed class ShellViewModel : ViewModelBase
         switch (_services.Bot.State)
         {
             case BotState.Running:
-                StatusText = "Relay online";
+                StatusText = Strings.Get("ui.status.online");
                 StatusState = Models.LinkState.Online;
                 break;
             case BotState.Starting:
-                StatusText = "Connecting";
+                StatusText = Strings.Get("ui.status.connecting");
                 StatusState = Models.LinkState.Working;
                 break;
             case BotState.Error:
-                StatusText = "Link fault";
+                StatusText = Strings.Get("ui.status.fault");
                 StatusState = Models.LinkState.Fault;
                 break;
             default:
-                StatusText = "Offline";
+                StatusText = Strings.Get("ui.status.offline");
                 StatusState = Models.LinkState.Idle;
                 break;
         }

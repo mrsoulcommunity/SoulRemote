@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Windows;
 using System.Windows.Forms;
+using SoulRemote.Localization;
 using WpfWindow = System.Windows.Window;
 
 namespace SoulRemote.Services;
@@ -16,7 +17,10 @@ public sealed class TrayIconManager : IDisposable
     private readonly AppServices _services;
     private readonly Action _exitAction;
     private readonly NotifyIcon _notifyIcon;
+    private readonly ContextMenuStrip _menu;
+    private readonly ToolStripMenuItem _openItem;
     private readonly ToolStripMenuItem _toggleItem;
+    private readonly ToolStripMenuItem _exitItem;
     private bool _exiting;
     private bool _balloonShown;
     private bool _disposed;
@@ -34,21 +38,24 @@ public sealed class TrayIconManager : IDisposable
             Text = "Soul Remote",
         };
 
-        var menu = new ContextMenuStrip();
-        menu.Items.Add(new ToolStripMenuItem("Open", null, (_, _) => ShowWindow()));
-        _toggleItem = new ToolStripMenuItem("Start bot", null, async (_, _) => await ToggleBotAsync());
-        menu.Items.Add(_toggleItem);
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem("Exit", null, (_, _) => ExitApp()));
-        _notifyIcon.ContextMenuStrip = menu;
+        _menu = new ContextMenuStrip();
+        _openItem = new ToolStripMenuItem(string.Empty, null, (_, _) => ShowWindow());
+        _toggleItem = new ToolStripMenuItem(string.Empty, null, async (_, _) => await ToggleBotAsync());
+        _exitItem = new ToolStripMenuItem(string.Empty, null, (_, _) => ExitApp());
+        _menu.Items.Add(_openItem);
+        _menu.Items.Add(_toggleItem);
+        _menu.Items.Add(new ToolStripSeparator());
+        _menu.Items.Add(_exitItem);
+        _notifyIcon.ContextMenuStrip = _menu;
 
         _notifyIcon.DoubleClick += (_, _) => ShowWindow();
 
         _window.StateChanged += OnStateChanged;
         _window.Closing += OnClosing;
         _services.Bot.StateChanged += OnBotStateChanged;
+        Strings.LanguageChanged += OnLanguageChanged;
 
-        UpdateToggleText();
+        ApplyLanguage();
     }
 
     private void OnStateChanged(object? sender, EventArgs e)
@@ -72,14 +79,23 @@ public sealed class TrayIconManager : IDisposable
         _window.Dispatcher.BeginInvoke(() =>
         {
             UpdateToggleText();
-            _notifyIcon.Text = _services.Bot.IsRunning
-                ? "Soul Remote — online"
-                : "Soul Remote — offline";
+            _notifyIcon.Text = Strings.Get(_services.Bot.IsRunning ? "ui.tray.online" : "ui.tray.offline");
         });
     }
 
     private void UpdateToggleText()
-        => _toggleItem.Text = _services.Bot.IsRunning ? "Stop bot" : "Start bot";
+        => _toggleItem.Text = Strings.Get(_services.Bot.IsRunning ? "ui.tray.stopbot" : "ui.tray.startbot");
+
+    private void OnLanguageChanged() => _window.Dispatcher.BeginInvoke(ApplyLanguage);
+
+    /// <summary>The tray menu is built once, so its captions are re-read on a switch.</summary>
+    private void ApplyLanguage()
+    {
+        _openItem.Text = Strings.Get("ui.tray.open");
+        _exitItem.Text = Strings.Get("ui.tray.exit");
+        UpdateToggleText();
+        _notifyIcon.Text = Strings.Get(_services.Bot.IsRunning ? "ui.tray.online" : "ui.tray.offline");
+    }
 
     private async Task ToggleBotAsync()
     {
@@ -92,7 +108,7 @@ public sealed class TrayIconManager : IDisposable
         }
         catch (Exception ex)
         {
-            _notifyIcon.ShowBalloonTip(4000, "Soul Remote", ex.Message, ToolTipIcon.Error);
+            _notifyIcon.ShowBalloonTip(4000, Strings.Get("ui.dialog.title"), ex.Message, ToolTipIcon.Error);
         }
     }
 
@@ -103,8 +119,8 @@ public sealed class TrayIconManager : IDisposable
         if (!_balloonShown)
         {
             _balloonShown = true;
-            _notifyIcon.ShowBalloonTip(3000, "Soul Remote",
-                "Still running in the tray. Right-click the icon for options.", ToolTipIcon.Info);
+            _notifyIcon.ShowBalloonTip(3000, Strings.Get("ui.dialog.title"),
+                Strings.Get("ui.tray.hidden"), ToolTipIcon.Info);
         }
     }
 
@@ -133,7 +149,9 @@ public sealed class TrayIconManager : IDisposable
             return;
         _disposed = true;
         _services.Bot.StateChanged -= OnBotStateChanged;
+        Strings.LanguageChanged -= OnLanguageChanged;
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
+        _menu.Dispose();
     }
 }

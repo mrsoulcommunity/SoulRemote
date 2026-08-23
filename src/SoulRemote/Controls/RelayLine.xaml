@@ -11,6 +11,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:SoulRemote.ViewModels"
+             xmlns:p="clr-namespace:SoulRemote.Platform"
              x:Name="Root">
 
     <UserControl.Resources>
@@ -75,7 +76,7 @@
                 <StackPanel VerticalAlignment="Center">
                     <Ellipse Style="{StaticResource Lamp}"
                              Fill="{Binding PcState, ElementName=Root, Converter={StaticResource StateBrush}}" />
-                    <TextBlock Style="{StaticResource NodeLabel}" Text="THIS PC" />
+                    <TextBlock Style="{StaticResource NodeLabel}" Text="{p:T ui.relay.pc}" />
                 </StackPanel>
             </Border>
             <TextBlock Style="{StaticResource NodeDetail}" Text="{Binding PcDetail, ElementName=Root}" />
@@ -100,7 +101,7 @@
                 <StackPanel VerticalAlignment="Center">
                     <Ellipse Style="{StaticResource Lamp}"
                              Fill="{Binding EdgeState, ElementName=Root, Converter={StaticResource StateBrush}}" />
-                    <TextBlock Style="{StaticResource NodeLabel}" Text="CLOUDFLARE EDGE"
+                    <TextBlock Style="{StaticResource NodeLabel}" Text="{p:T ui.relay.edge}"
                                Foreground="{StaticResource RelayBrush}" />
                 </StackPanel>
             </Border>
@@ -126,7 +127,7 @@
                 <StackPanel VerticalAlignment="Center">
                     <Ellipse Style="{StaticResource Lamp}"
                              Fill="{Binding TelegramState, ElementName=Root, Converter={StaticResource StateBrush}}" />
-                    <TextBlock Style="{StaticResource NodeLabel}" Text="TELEGRAM" />
+                    <TextBlock Style="{StaticResource NodeLabel}" Text="{p:T ui.relay.telegram}" />
                 </StackPanel>
             </Border>
             <TextBlock Style="{StaticResource NodeDetail}" Text="{Binding TelegramDetail, ElementName=Root}" />

@@ -1,7 +1,8 @@
 <UserControl x:Class="SoulRemote.Views.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="clr-namespace:SoulRemote.ViewModels">
+             xmlns:vm="clr-namespace:SoulRemote.ViewModels"
+             xmlns:p="clr-namespace:SoulRemote.Platform">
 
     <UserControl.Resources>
         <vm:TextToVisibilityConverter x:Key="HasText" />
@@ -17,28 +18,49 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="32,10,32,32">
         <StackPanel MaxWidth="760" HorizontalAlignment="Left">
 
-            <TextBlock Text="Settings" Style="{StaticResource Title}" />
-            <TextBlock Text="Changes save as you make them." Style="{StaticResource BodyDim}" Margin="0,6,0,0" />
+            <TextBlock Text="{p:T ui.settings.title}" Style="{StaticResource Title}" />
+            <TextBlock Text="{p:T ui.settings.autosave}" Style="{StaticResource BodyDim}" Margin="0,6,0,0" />
 
-            <!-- ===== Startup ===== -->
+            <!-- ===== Language =====
+                 First on the page on purpose: someone who cannot read the rest of this
+                 screen needs to find this control without reading anything else, so it
+                 sits where the eye lands and both options are written in their own
+                 language rather than translated into the other one. -->
             <Border Style="{StaticResource Card}" Margin="0,22,0,12">
                 <StackPanel>
-                    <TextBlock Text="STARTUP" Style="{StaticResource Eyebrow}" />
-                    <StackPanel Margin="0,14,0,0">
-                        <CheckBox Style="{StaticResource ToggleSwitch}" Content="Start Soul Remote when I sign in"
-                                  IsChecked="{Binding StartWithWindows}" />
-                        <TextBlock Style="{StaticResource OptionHint}"
-                                   Text="Adds a per-user entry to Windows startup. No admin rights needed." />
+                    <TextBlock Text="{p:T ui.settings.language}" Style="{StaticResource Eyebrow}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <RadioButton Style="{StaticResource FilterChip}" GroupName="Language"
+                                     Content="{p:T ui.settings.english}"
+                                     Command="{Binding SetLanguageCommand}" CommandParameter="en"
+                                     IsChecked="{Binding IsEnglish, Mode=OneWay}" />
+                        <RadioButton Style="{StaticResource FilterChip}" GroupName="Language"
+                                     Content="{p:T ui.settings.persian}"
+                                     Command="{Binding SetLanguageCommand}" CommandParameter="fa"
+                                     IsChecked="{Binding IsPersian, Mode=OneWay}" />
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource OptionHint}" Margin="0,10,0,0"
+                               Text="{p:T ui.settings.language.hint}" />
+                </StackPanel>
+            </Border>
 
-                        <CheckBox Style="{StaticResource ToggleSwitch}" Content="Start hidden in the tray"
+            <!-- ===== Startup ===== -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="{p:T ui.settings.startup}" Style="{StaticResource Eyebrow}" />
+                    <StackPanel Margin="0,14,0,0">
+                        <CheckBox Style="{StaticResource ToggleSwitch}" Content="{p:T ui.settings.startwin}"
+                                  IsChecked="{Binding StartWithWindows}" />
+                        <TextBlock Style="{StaticResource OptionHint}" Text="{p:T ui.settings.startwin.hint}" />
+
+                        <CheckBox Style="{StaticResource ToggleSwitch}" Content="{p:T ui.settings.startmin}"
                                   IsChecked="{Binding StartMinimized}" />
 
-                        <CheckBox Style="{StaticResource ToggleSwitch}" Content="Start the relay automatically"
+                        <CheckBox Style="{StaticResource ToggleSwitch}" Content="{p:T ui.settings.autostart}"
                                   IsChecked="{Binding AutoStartBot}" />
-                        <TextBlock Style="{StaticResource OptionHint}"
-                                   Text="Begins listening as soon as the app launches, so the PC is reachable after a reboot." />
+                        <TextBlock Style="{StaticResource OptionHint}" Text="{p:T ui.settings.autostart.hint}" />
 
-                        <CheckBox Style="{StaticResource ToggleSwitch}" Content="Announce in Telegram when the relay comes online"
+                        <CheckBox Style="{StaticResource ToggleSwitch}" Content="{p:T ui.settings.notify}"
                                   IsChecked="{Binding NotifyOnStartup}" />
                     </StackPanel>
                 </StackPanel>
@@ -47,55 +69,65 @@
             <!-- ===== Permissions ===== -->
             <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                 <StackPanel>
-                    <TextBlock Text="WHAT THE BOT MAY DO" Style="{StaticResource Eyebrow}"
+                    <TextBlock Text="{p:T ui.settings.permissions}" Style="{StaticResource Eyebrow}"
                                Foreground="{StaticResource StandbyBrush}" />
                     <TextBlock Style="{StaticResource BodyDim}" Margin="0,8,0,0" FontSize="12"
-                               Text="Power, screenshot, media and process controls are always available to paired chats. These two are off until you turn them on." />
+                               Text="{p:T ui.settings.permissions.hint}" />
                     <StackPanel Margin="0,14,0,0">
-                        <CheckBox Style="{StaticResource RiskToggleSwitch}" Content="Allow shell commands (/cmd)"
+                        <CheckBox Style="{StaticResource RiskToggleSwitch}" Content="{p:T ui.settings.shell.label}"
                                   IsChecked="{Binding AllowShellCommands}" />
-                        <TextBlock Style="{StaticResource OptionHint}"
-                                   Text="Runs anything a paired chat sends. Grants full control of this account — leave off unless you need it." />
+                        <TextBlock Style="{StaticResource OptionHint}" Text="{p:T ui.settings.shell.hint}" />
 
-                        <CheckBox Style="{StaticResource RiskToggleSwitch}" Content="Allow browsing and fetching files"
+                        <CheckBox Style="{StaticResource RiskToggleSwitch}" Content="{p:T ui.settings.files.label}"
                                   IsChecked="{Binding AllowFileAccess}" />
-                        <TextBlock Style="{StaticResource OptionHint}"
-                                   Text="Lets a paired chat list folders and download files from this PC." />
+                        <TextBlock Style="{StaticResource OptionHint}" Text="{p:T ui.settings.files.hint}" />
                     </StackPanel>
+
+                    <TextBlock Text="{p:T ui.settings.downloads}" Style="{StaticResource FieldLabel}" Margin="0,6,0,6" />
+                    <TextBox Style="{StaticResource FieldBox}"
+                             Text="{Binding DownloadFolder, UpdateSourceTrigger=LostFocus}"
+                             IsEnabled="{Binding AllowFileAccess}" />
+                    <TextBlock Style="{StaticResource BodyDim}" Margin="0,8,0,0" FontSize="12"
+                               Text="{p:T ui.settings.downloads.hint}" />
                 </StackPanel>
             </Border>
 
             <!-- ===== Interface & connection ===== -->
             <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                 <StackPanel>
-                    <TextBlock Text="INTERFACE" Style="{StaticResource Eyebrow}" />
+                    <TextBlock Text="{p:T ui.settings.interface}" Style="{StaticResource Eyebrow}" />
                     <StackPanel Margin="0,14,0,0">
-                        <CheckBox Style="{StaticResource ToggleSwitch}" Content="Reduce motion"
+                        <CheckBox Style="{StaticResource ToggleSwitch}" Content="{p:T ui.settings.reducemotion}"
                                   IsChecked="{Binding ReduceMotion}" />
-                        <TextBlock Style="{StaticResource OptionHint}"
-                                   Text="Holds the relay line still instead of animating traffic along it." />
+                        <TextBlock Style="{StaticResource OptionHint}" Text="{p:T ui.settings.reducemotion.hint}" />
                     </StackPanel>
 
-                    <TextBlock Text="Long-poll timeout (seconds)" Style="{StaticResource FieldLabel}" Margin="0,14,0,6" />
+                    <TextBlock Text="{p:T ui.settings.polltimeout}" Style="{StaticResource FieldLabel}" Margin="0,14,0,6" />
                     <TextBox Style="{StaticResource FieldBox}" Width="110" HorizontalAlignment="Left"
                              Text="{Binding PollTimeoutSeconds, UpdateSourceTrigger=LostFocus}" />
                     <TextBlock Style="{StaticResource BodyDim}" Margin="0,8,0,0" FontSize="12"
-                               Text="How long each request waits for new commands. Between 5 and 50; 25 suits most connections." />
+                               Text="{p:T ui.settings.polltimeout.hint}" />
+
+                    <TextBlock Text="{p:T ui.settings.logretention}" Style="{StaticResource FieldLabel}" Margin="0,14,0,6" />
+                    <TextBox Style="{StaticResource FieldBox}" Width="110" HorizontalAlignment="Left"
+                             Text="{Binding LogRetentionDays, UpdateSourceTrigger=LostFocus}" />
+                    <TextBlock Style="{StaticResource BodyDim}" Margin="0,8,0,0" FontSize="12"
+                               Text="{p:T ui.settings.logretention.hint}" />
                 </StackPanel>
             </Border>
 
             <!-- ===== Files ===== -->
             <Border Style="{StaticResource Card}">
                 <StackPanel>
-                    <TextBlock Text="ON THIS PC" Style="{StaticResource Eyebrow}" />
+                    <TextBlock Text="{p:T ui.settings.onthispc}" Style="{StaticResource Eyebrow}" />
                     <TextBlock Text="{Binding SettingsPath}" Style="{StaticResource DataDim}" Margin="0,10,0,0"
                                TextWrapping="Wrap" />
                     <TextBlock Style="{StaticResource BodyDim}" Margin="0,8,0,0" FontSize="12"
-                               Text="Tokens in this file are encrypted with Windows DPAPI and can only be read by your account on this machine." />
+                               Text="{p:T ui.settings.dpapi}" />
                     <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
-                        <Button Style="{StaticResource GhostButton}" Content="Open settings folder"
+                        <Button Style="{StaticResource GhostButton}" Content="{p:T ui.settings.opensettings}"
                                 Command="{Binding OpenSettingsFileCommand}" Margin="0,0,10,0" />
-                        <Button Style="{StaticResource GhostButton}" Content="Open logs folder"
+                        <Button Style="{StaticResource GhostButton}" Content="{p:T ui.settings.openlogs}"
                                 Command="{Binding OpenLogFolderCommand}" />
                     </StackPanel>
                     <TextBlock Text="{Binding SavedAt}" Style="{StaticResource DataDim}" Margin="0,12,0,0"

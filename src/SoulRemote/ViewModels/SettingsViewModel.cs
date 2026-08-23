@@ -1,3 +1,4 @@
+using SoulRemote.Localization;
 using SoulRemote.Services;
 
 namespace SoulRemote.ViewModels;
@@ -17,7 +18,39 @@ public sealed class SettingsViewModel : ViewModelBase
         Load();
         OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
         OpenSettingsFileCommand = new RelayCommand(OpenSettingsFolder);
+        SetLanguageCommand = new RelayCommand(p => SetLanguage(p as string));
     }
+
+    /// <summary>
+    /// Switching language rewrites this window, the tray menu and everything the bot
+    /// says, so it is applied globally rather than kept as a view-model field. The
+    /// "/" command list in Telegram is re-published too, since its descriptions are
+    /// translated as well.
+    /// </summary>
+    private void SetLanguage(string? tag)
+    {
+        var language = AppLanguageExtensions.Parse(tag);
+        if (language == Strings.Current)
+            return;
+
+        Persist(s => s.Language = language.Tag());
+        Strings.Use(language);
+        OnPropertyChanged(nameof(IsEnglish));
+        OnPropertyChanged(nameof(IsPersian));
+        _ = _services.Bot.RefreshCommandListAsync();
+    }
+
+    /// <summary>Re-reads the chips after the language changed somewhere else — the bot menu.</summary>
+    public void NotifyLanguageChanged()
+    {
+        OnPropertyChanged(nameof(IsEnglish));
+        OnPropertyChanged(nameof(IsPersian));
+    }
+
+    public bool IsEnglish => Strings.Current == AppLanguage.English;
+    public bool IsPersian => Strings.Current == AppLanguage.Persian;
+
+    public RelayCommand SetLanguageCommand { get; }
 
     private void Load()
     {
@@ -31,6 +64,8 @@ public sealed class SettingsViewModel : ViewModelBase
         _allowFileAccess = s.AllowFileAccess;
         _reduceMotion = s.ReduceMotion;
         _pollTimeoutSeconds = s.PollTimeoutSeconds <= 0 ? 25 : s.PollTimeoutSeconds;
+        _logRetentionDays = s.LogRetentionDays;
+        _downloadFolder = s.DownloadFolder;
         _loading = false;
     }
 
@@ -42,7 +77,7 @@ public sealed class SettingsViewModel : ViewModelBase
         var s = _services.Settings.Current.Clone();
         mutate(s);
         _services.Settings.Save(s);
-        SavedAt = $"Saved {DateTime.Now:HH:mm:ss}";
+        SavedAt = Strings.Format("ui.settings.saved", DateTime.Now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture));
     }
 
     private string _savedAt = string.Empty;
@@ -112,15 +147,44 @@ public sealed class SettingsViewModel : ViewModelBase
             if (SetProperty(ref _pollTimeoutSeconds, clamped))
                 Persist(s => s.PollTimeoutSeconds = clamped);
 
-            // If we coerced what the user typed, the TextBox is still showing their
-            // number. Re-notify after the binding's own update pass so it snaps back
-            // to the value that was actually saved.
             if (clamped != value)
-            {
-                Application.Current?.Dispatcher.BeginInvoke(
-                    System.Windows.Threading.DispatcherPriority.DataBind,
-                    () => OnPropertyChanged(nameof(PollTimeoutSeconds)));
-            }
+                SnapBack(nameof(PollTimeoutSeconds));
+        }
+    }
+
+    /// <summary>
+    /// If we coerced what the user typed, the TextBox is still showing their number.
+    /// Re-notify after the binding's own update pass so it snaps back to the value
+    /// that was actually saved.
+    /// </summary>
+    private void SnapBack(string propertyName)
+        => Application.Current?.Dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.DataBind,
+            () => OnPropertyChanged(propertyName));
+
+    private int _logRetentionDays;
+    public int LogRetentionDays
+    {
+        get => _logRetentionDays;
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 365);
+            if (SetProperty(ref _logRetentionDays, clamped))
+                Persist(s => s.LogRetentionDays = clamped);
+            if (clamped != value)
+                SnapBack(nameof(LogRetentionDays));
+        }
+    }
+
+    private string _downloadFolder = string.Empty;
+    public string DownloadFolder
+    {
+        get => _downloadFolder;
+        set
+        {
+            var trimmed = (value ?? string.Empty).Trim();
+            if (SetProperty(ref _downloadFolder, trimmed))
+                Persist(s => s.DownloadFolder = trimmed);
         }
     }
 

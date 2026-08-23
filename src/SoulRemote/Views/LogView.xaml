@@ -47,6 +47,7 @@
                        Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}" />
             <ListBox x:Name="LogList" ItemsSource="{Binding View}"
                      Background="Transparent" BorderThickness="0"
+                     FlowDirection="LeftToRight"
                      VirtualizingPanel.IsVirtualizing="True"
                      VirtualizingPanel.VirtualizationMode="Recycling"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">

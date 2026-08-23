@@ -125,7 +125,7 @@
                 <StackPanel>
                     <TextBlock Text="{p:T ui.settings.onthispc}" Style="{StaticResource Eyebrow}" />
                     <TextBlock Text="{Binding SettingsPath}" Style="{StaticResource DataDim}" Margin="0,10,0,0"
-                               TextWrapping="Wrap" />
+                               TextWrapping="Wrap" FlowDirection="LeftToRight" />
                     <TextBlock Style="{StaticResource BodyDim}" Margin="0,8,0,0" FontSize="12"
                                Text="{p:T ui.settings.dpapi}" />
                     <StackPanel Orientation="Horizontal" Margin="0,14,0,0">

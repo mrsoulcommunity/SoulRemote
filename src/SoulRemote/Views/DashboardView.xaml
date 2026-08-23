@@ -102,7 +102,12 @@
                         <TextBlock Text="{p:T ui.dash.pair.title}" Style="{StaticResource Eyebrow}" />
                         <TextBlock Style="{StaticResource BodyDim}" Margin="0,8,0,0"
                                    Text="{p:T ui.dash.pair.help}" />
-                        <Border Style="{StaticResource CardInset}" Margin="0,14,20,0" HorizontalAlignment="Left">
+                        <!-- The command must be copied character for character, so it opts out of
+                             the window's flow direction: under RTL, bidi reordering puts the
+                             digits before the slash and the user copies something that is not
+                             the command. -->
+                        <Border Style="{StaticResource CardInset}" Margin="0,14,20,0" HorizontalAlignment="Left"
+                                FlowDirection="LeftToRight">
                             <TextBlock FontFamily="{StaticResource DataFont}" FontSize="20">
                                 <Run Text="/pair " Foreground="{StaticResource InkFaintBrush}" />
                                 <Run Text="{Binding PairingCode, Mode=OneWay}" Foreground="{StaticResource SignalBrush}" FontWeight="Bold" />
@@ -138,7 +143,8 @@
                                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Left">
                                             <TextBlock Text="{Binding Label}" Style="{StaticResource Body}"
                                                        Visibility="{Binding HasName, Converter={StaticResource BoolToVis}}" />
-                                            <TextBlock Text="{Binding IdText}" Style="{StaticResource DataDim}" />
+                                            <TextBlock Text="{Binding IdText}" Style="{StaticResource DataDim}"
+                                                       FlowDirection="LeftToRight" />
                                         </StackPanel>
                                         <Button Style="{StaticResource GhostButton}" Content="{Binding RemoveText}"
                                                 HorizontalAlignment="Right" VerticalAlignment="Center"

@@ -47,6 +47,9 @@
             is on screen and unreadable at the same time.
         -->
         <Style x:Key="NodeDetail" TargetType="TextBlock" BasedOn="{StaticResource DataDim}">
+            <!-- A hostname, a workers.dev URL and an @handle: all machine-readable, so
+                 they keep left-to-right order even when the window is mirrored. -->
+            <Setter Property="FlowDirection" Value="LeftToRight" />
             <Setter Property="HorizontalAlignment" Value="Center" />
             <Setter Property="Margin" Value="0,9,0,0" />
             <Setter Property="MaxWidth" Value="150" />

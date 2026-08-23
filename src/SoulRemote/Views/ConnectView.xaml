@@ -135,7 +135,8 @@
                                 <TextBlock Text="{p:T ui.connect.endpoint}" Style="{StaticResource Eyebrow}" />
                                 <TextBlock Text="{Binding WorkerUrl}" Style="{StaticResource Data}"
                                            Foreground="{StaticResource SignalBrush}" Margin="0,6,0,0"
-                                           TextWrapping="Wrap" FontSize="11" />
+                                           TextWrapping="Wrap" FontSize="11"
+                                           FlowDirection="LeftToRight" />
                             </StackPanel>
                         </Border>
                     </StackPanel>

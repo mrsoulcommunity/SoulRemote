@@ -5,6 +5,7 @@
         xmlns:views="clr-namespace:SoulRemote.Views"
         xmlns:p="clr-namespace:SoulRemote.Platform"
         Title="Soul Remote" Height="760" Width="1120"
+        Icon="pack://application:,,,/Assets/app.ico"
         FlowDirection="{p:FlowDirection}"
         MinHeight="620" MinWidth="960"
         Background="{StaticResource VoidBrush}"

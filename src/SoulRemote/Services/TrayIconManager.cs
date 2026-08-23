@@ -33,7 +33,7 @@ public sealed class TrayIconManager : IDisposable
 
         _notifyIcon = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = LoadAppIcon(),
             Visible = true,
             Text = "Soul Remote",
         };
@@ -56,6 +56,27 @@ public sealed class TrayIconManager : IDisposable
         Strings.LanguageChanged += OnLanguageChanged;
 
         ApplyLanguage();
+    }
+
+    /// <summary>
+    /// The tray icon is the app's own mark, read from the WPF resource rather than
+    /// the executable, so it works the same in a single-file build where the exe on
+    /// disk is a bundle. A missing or unreadable resource falls back to the generic
+    /// Windows icon: an app that shows the wrong icon is still usable, one that
+    /// throws on startup is not.
+    /// </summary>
+    private static Icon LoadAppIcon()
+    {
+        try
+        {
+            var uri = new Uri("pack://application:,,,/Assets/app.ico", UriKind.Absolute);
+            using var stream = System.Windows.Application.GetResourceStream(uri)?.Stream;
+            return stream is null ? SystemIcons.Application : new Icon(stream, SystemInformation.SmallIconSize);
+        }
+        catch (Exception)
+        {
+            return SystemIcons.Application;
+        }
     }
 
     private void OnStateChanged(object? sender, EventArgs e)

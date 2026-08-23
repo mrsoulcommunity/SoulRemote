@@ -74,6 +74,27 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for details.
 - A free **Cloudflare** account
 - A **Telegram bot** token from [@BotFather](https://t.me/BotFather)
 
+### 0) Install
+Run **`SoulRemote-<version>-x64.msi`** and follow the wizard. It installs **for the
+current user only**, so there is no UAC prompt and no admin account needed:
+
+| | |
+|---|---|
+| Program | `%LOCALAPPDATA%\Programs\Soul Remote\SoulRemote.exe` |
+| Shortcuts | Start menu, and the desktop unless you say otherwise |
+| Settings | `%APPDATA%\SoulRemote\settings.json` — kept on upgrade, kept on uninstall |
+| Uninstall | *Settings → Apps → Soul Remote*, like any other app |
+
+Installing a newer MSI upgrades in place and keeps your tokens and paired chats.
+For an unattended install:
+
+```powershell
+msiexec /i SoulRemote-1.0.0-x64.msi /qn INSTALLDESKTOPSHORTCUT=0
+```
+
+The plain `SoulRemote.exe` still works on its own if you would rather not install
+anything — it needs no runtime, and everything below applies unchanged.
+
 ### 1) Create a Cloudflare API token
 Cloudflare dashboard → **My Profile → API Tokens → Create Token** →
 use the **“Edit Cloudflare Workers”** template → Create → copy the token.
@@ -83,7 +104,7 @@ use the **“Edit Cloudflare Workers”** template → Create → copy the token
 > Workers, open **Workers & Pages** once so a free `*.workers.dev` subdomain is
 > registered.
 
-### 2) Run Soul Remote → **Connect**
+### 2) Start Soul Remote → **Connect**
 1. Paste the **Cloudflare API token** and the **Telegram bot token**.
 2. Press **Connect**. The bring‑up sequence runs on the right; when it finishes
    the relay endpoint appears and the bot is already listening.
@@ -109,6 +130,29 @@ dotnet test SoulRemote.sln -c Release
 dotnet publish src/SoulRemote/SoulRemote.csproj -c Release -r win-x64 `
   --self-contained true -p:PublishSingleFile=true -o publish
 ```
+
+### The installer
+
+One command runs the tests, publishes the exe, and wraps it in the MSI, writing
+both plus their SHA-256 files to `dist/`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\build-installer.ps1 -Version 1.0.0
+```
+
+It needs the [WiX 5](https://wixtoolset.org) CLI once:
+
+```powershell
+dotnet tool install --global wix --version 5.0.2
+wix extension add -g WixToolset.UI.wixext/5.0.2
+wix extension add -g WixToolset.Util.wixext/5.0.2
+```
+
+The installer is authored in [`installer/SoulRemote.wxs`](installer/SoulRemote.wxs).
+Its artwork — and the app's own icon — is drawn from the WPF palette by
+[`tools/make-brand.ps1`](tools/make-brand.ps1) rather than committed as binaries
+nobody can edit; `build-installer.ps1` re-runs it on every build, so the icon can
+never drift from `Resources/Palette.xaml`.
 
 Requires the **.NET 8 SDK**. The desktop app targets `net8.0-windows`, but
 `SoulRemote.Core` and the test suite are plain `net8.0` — so `dotnet test` runs
@@ -152,6 +196,20 @@ CI builds and tests on every push (`.github/workflows/build.yml`); pushing a
 فراهم می‌کند (اسکرین‌شات، خاموش/ری‌استارت، صدا، پروسه‌ها و…). چون در ایران
 `api.telegram.org` فیلتر است، سول ریموت به‌صورت خودکار یک **Cloudflare Worker**
 می‌سازد و تمام ترافیک تلگرام را از طریق کلادفلر (که در دسترس است) عبور می‌دهد.
+
+### نصب
+فایل **`SoulRemote-<version>-x64.msi`** را اجرا کنید و مراحل نصب را ادامه دهید.
+نصب فقط برای **کاربر فعلی** انجام می‌شود، بنابراین نه دسترسی ادمین لازم است و نه
+پنجرهٔ UAC بالا می‌آید:
+
+- برنامه در `%LOCALAPPDATA%\Programs\Soul Remote` نصب می‌شود.
+- میان‌بر در منوی استارت و (در صورت تمایل) روی دسکتاپ ساخته می‌شود.
+- تنظیمات در `%APPDATA%\SoulRemote\settings.json` می‌ماند و با نصب نسخهٔ جدید یا
+  حذف برنامه پاک نمی‌شود؛ پس توکن‌ها و چت‌های جفت‌شده باقی می‌مانند.
+- حذف برنامه از مسیر همیشگی ویندوز: **تنظیمات ← Apps ← Soul Remote**.
+
+اگر ترجیح می‌دهید چیزی نصب نشود، همان فایل `SoulRemote.exe` به‌تنهایی هم کار می‌کند
+و به هیچ رانتایمی نیاز ندارد.
 
 ### راه‌اندازی
 ۱. در **Cloudflare** یک **API Token** با قالب «Edit Cloudflare Workers» بسازید.

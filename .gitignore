@@ -11,6 +11,9 @@ out/
 _ReSharper*/
 *.DotSettings.user
 
+## Release artefacts (built by tools/build-installer.ps1)
+dist/
+
 ## Build results
 [Dd]ebug/
 [Rr]elease/

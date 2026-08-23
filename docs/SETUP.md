@@ -1,7 +1,19 @@
 # Soul Remote — Setup Guide
 
-This guide walks through connecting Cloudflare, creating a Telegram bot, and
-linking your first chat.
+This guide walks through installing Soul Remote, connecting Cloudflare, creating a
+Telegram bot, and linking your first chat.
+
+## 0. Install Soul Remote
+
+Run `SoulRemote-<version>-x64.msi`. It installs for the current user only — no
+admin rights, no UAC prompt — into `%LOCALAPPDATA%\Programs\Soul Remote`, and adds
+a Start-menu shortcut (plus a desktop one, unless you clear the option).
+
+Settings live in `%APPDATA%\SoulRemote\settings.json`, separate from the program, so
+upgrading or uninstalling never touches your tokens or paired chats.
+
+If you would rather not install anything, `SoulRemote.exe` runs on its own from
+wherever you put it; the rest of this guide is identical either way.
 
 ## 1. Create a Telegram bot
 

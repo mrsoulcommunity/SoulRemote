@@ -8,6 +8,7 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <AssemblyName>SoulRemote</AssemblyName>
     <RootNamespace>SoulRemote</RootNamespace>
     <Version>1.0.0</Version>
@@ -55,9 +56,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- app.ico is optional; only reference it as a resource when present so the build never breaks without it. -->
+    <!--
+      app.ico is both the executable's icon (ApplicationIcon, above) and a WPF
+      resource, because the window and the tray load it at run time from
+      pack://application:,,,/Assets/app.ico. tools/make-brand.ps1 generates it.
+    -->
     <None Remove="Assets\app.ico" />
-    <Resource Include="Assets\app.ico" Condition="Exists('Assets\app.ico')" />
+    <Resource Include="Assets\app.ico" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Soul Remote's installer.
+
+  It is a per-user package on purpose. Everything the app touches is already
+  per-user - the DPAPI-encrypted settings under %APPDATA%, the "start with Windows"
+  value under HKCU - and a per-machine install would put a UAC prompt in front of an
+  audience who mostly receive this exe over Telegram. A per-user MSI installs with no
+  elevation at all.
+
+  Built by tools/build-installer.ps1, which passes in the version and the folder the
+  published single-file exe was written to.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <?ifndef Version?>
+  <?define Version = "1.0.0" ?>
+  <?endif?>
+  <?ifndef PublishDir?>
+  <?define PublishDir = "..\publish" ?>
+  <?endif?>
+  <!-- Kept separate from PublishDir so the published exe can be staged anywhere. -->
+  <?ifndef IconFile?>
+  <?define IconFile = "..\src\SoulRemote\Assets\app.ico" ?>
+  <?endif?>
+
+  <Package Name="Soul Remote"
+           Manufacturer="MrSoul"
+           Version="$(Version)"
+           Scope="perUser"
+           Compressed="yes"
+           InstallerVersion="500"
+           UpgradeCode="6E6A1C6E-6F1B-4B2A-9E2C-2E7B9C2F3A41">
+
+    <SummaryInformation Description="Control your Windows PC from Telegram"
+                        Manufacturer="MrSoul" />
+
+    <!--
+      Upgrades replace in place and keep the install folder, so an existing pairing
+      and the encrypted tokens under %APPDATA% survive. AllowSameVersionUpgrades lets
+      a rebuilt 1.0.0 replace an installed 1.0.0 rather than installing beside it.
+    -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of Soul Remote is already installed. Uninstall it first, then run this installer again." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="SoulRemoteIcon" SourceFile="$(IconFile)" />
+    <Property Id="ARPPRODUCTICON" Value="SoulRemoteIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/mrsoulcommunity/SoulRemote" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+    <!-- A per-user install of a 66 MB exe does not warrant a system restore point. -->
+    <Property Id="MSIFASTINSTALL" Value="7" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="Soul Remote" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="DesktopFolder" />
+
+    <Feature Id="Main" Title="Soul Remote" Level="1" AllowAbsent="no">
+      <ComponentGroupRef Id="ApplicationComponents" />
+    </Feature>
+
+    <ComponentGroup Id="ApplicationComponents">
+      <Component Id="ApplicationExecutable" Directory="INSTALLFOLDER" Guid="A7C1F0D2-4E5B-4C77-9B3E-6D1A8F0B2C55">
+        <File Id="SoulRemoteExe" Source="$(PublishDir)\SoulRemote.exe" KeyPath="yes" />
+      </Component>
+
+      <!--
+        A shortcut is not a file, so each shortcut component needs its own key path;
+        an HKCU value is the standard choice for a per-user package.
+      -->
+      <Component Id="StartMenuShortcut" Directory="ProgramMenuFolder" Guid="C3B94E17-2A8D-4F6E-8E44-1B7D2C905E63">
+        <Shortcut Id="StartMenuSoulRemote"
+                  Name="Soul Remote"
+                  Description="Control your Windows PC from Telegram"
+                  Target="[#SoulRemoteExe]"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="SoulRemoteIcon" />
+        <RegistryValue Root="HKCU" Key="Software\MrSoul\SoulRemote"
+                       Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+
+      <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="1D5F82A9-9C34-4B0A-B6E1-77C0E4A5D218"
+                 Condition="INSTALLDESKTOPSHORTCUT = &quot;1&quot;">
+        <Shortcut Id="DesktopSoulRemote"
+                  Name="Soul Remote"
+                  Description="Control your Windows PC from Telegram"
+                  Target="[#SoulRemoteExe]"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="SoulRemoteIcon" />
+        <RegistryValue Root="HKCU" Key="Software\MrSoul\SoulRemote"
+                       Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+
+      <Component Id="InstallRecord" Directory="INSTALLFOLDER" Guid="5B0E6A34-8F72-4E19-A0D5-3C81B6F4E907">
+        <!-- Removing the folder on uninstall needs something registered against it. -->
+        <RegistryValue Root="HKCU" Key="Software\MrSoul\SoulRemote"
+                       Name="InstallFolder" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+        <RegistryValue Root="HKCU" Key="Software\MrSoul\SoulRemote"
+                       Name="Version" Type="string" Value="$(Version)" />
+        <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+      </Component>
+    </ComponentGroup>
+
+    <!--
+      A desktop shortcut is on by default - this is a tray app, and the first launch
+      is by hand - but a silent deployment can turn it off with
+      msiexec /i SoulRemote.msi /qn INSTALLDESKTOPSHORTCUT=0
+    -->
+    <Property Id="INSTALLDESKTOPSHORTCUT" Value="1" Secure="yes" />
+
+    <!-- The tick on the final page; clearing it leaves the machine untouched. -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch Soul Remote" />
+    <Property Id="WixShellExecTarget" Value="[#SoulRemoteExe]" />
+    <!--
+      ShellExecute rather than a direct Execute, so the app starts as the signed-in
+      user at their own integrity level instead of inheriting the installer's.
+    -->
+    <CustomAction Id="LaunchSoulRemote"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixShellExec"
+                  Impersonate="yes" />
+
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+    <WixVariable Id="WixUIBannerBmp" Value="banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="dialog.bmp" />
+
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+
+    <UI>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchSoulRemote"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
+    </UI>
+
+  </Package>
+</Wix>

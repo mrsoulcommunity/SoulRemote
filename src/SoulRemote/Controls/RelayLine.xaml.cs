@@ -14,7 +14,7 @@ namespace SoulRemote.Controls;
 /// </summary>
 public partial class RelayLine : UserControl
 {
-    private const double ConduitTravel = 98;
+    private const double ConduitTravel = 90;
 
     public RelayLine()
     {

@@ -76,6 +76,13 @@ public sealed class DashboardViewModel : ViewModelBase
     private string _uptime = "—";
     public string Uptime { get => _uptime; private set => SetProperty(ref _uptime, value); }
 
+    private string _bootedAt = string.Empty;
+    public string BootedAt { get => _bootedAt; private set => SetProperty(ref _bootedAt, value); }
+
+    private bool _isRelayRunning;
+    /// <summary>Drives which of Start/Stop is offered, so the panel never shows the wrong one.</summary>
+    public bool IsRelayRunning { get => _isRelayRunning; private set => SetProperty(ref _isRelayRunning, value); }
+
     private int _commandCount;
     public int CommandCount { get => _commandCount; private set => SetProperty(ref _commandCount, value); }
 
@@ -230,7 +237,10 @@ public sealed class DashboardViewModel : ViewModelBase
         ChatList = ids.Length == 0 ? "No chats paired yet" : string.Join("  ·  ", ids);
 
         CommandCount = _services.Router.CommandsHandled;
-        Uptime = TextUtil.HumanDuration(TimeSpan.FromMilliseconds(Environment.TickCount64));
+        var up = TimeSpan.FromMilliseconds(Environment.TickCount64);
+        Uptime = TextUtil.HumanDuration(up);
+        BootedAt = "since " + DateTime.Now.Subtract(up).ToString("d MMM, HH:mm");
+        IsRelayRunning = running;
         OnPropertyChanged(nameof(AnimationsEnabled));
 
         if (running)

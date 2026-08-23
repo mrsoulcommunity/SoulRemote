@@ -18,8 +18,8 @@
 
         <!-- A node: fixed-width plate with a status lamp and a machine label. -->
         <Style x:Key="NodePlate" TargetType="Border">
-            <Setter Property="Width" Value="132" />
-            <Setter Property="Height" Value="72" />
+            <Setter Property="Width" Value="140" />
+            <Setter Property="Height" Value="78" />
             <Setter Property="CornerRadius" Value="10" />
             <Setter Property="Background" Value="{StaticResource DeckBrush}" />
             <Setter Property="BorderThickness" Value="1" />
@@ -41,9 +41,11 @@
 
         <Style x:Key="NodeDetail" TargetType="TextBlock" BasedOn="{StaticResource DataDim}">
             <Setter Property="HorizontalAlignment" Value="Center" />
-            <Setter Property="Margin" Value="0,8,0,0" />
+            <Setter Property="Margin" Value="0,9,0,0" />
             <Setter Property="MaxWidth" Value="150" />
             <Setter Property="FontSize" Value="10" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
         </Style>
 
         <!-- The travelling packet: only runs while the conduit is live. -->
@@ -67,7 +69,7 @@
         </Grid.ColumnDefinitions>
 
         <!-- ===== Hop 1: this machine ===== -->
-        <StackPanel Grid.Column="0" VerticalAlignment="Top">
+        <StackPanel Grid.Column="0" VerticalAlignment="Top" Width="152">
             <Border Style="{StaticResource NodePlate}"
                     BorderBrush="{Binding PcState, ElementName=Root, Converter={StaticResource StateBrush}}">
                 <StackPanel VerticalAlignment="Center">
@@ -80,7 +82,7 @@
         </StackPanel>
 
         <!-- ===== Conduit 1 ===== -->
-        <Grid Grid.Column="1" Width="104" Height="72">
+        <Grid Grid.Column="1" Width="96" Height="78">
             <Border Height="2" VerticalAlignment="Center" Background="{StaticResource LineBrush}" />
             <Border x:Name="Conduit1" Height="2" VerticalAlignment="Center"
                     Background="{StaticResource ConduitBrush}" Opacity="0" />
@@ -92,20 +94,21 @@
         </Grid>
 
         <!-- ===== Hop 2: the Cloudflare edge ===== -->
-        <StackPanel Grid.Column="2" VerticalAlignment="Top">
+        <StackPanel Grid.Column="2" VerticalAlignment="Top" Width="152">
             <Border Style="{StaticResource NodePlate}"
                     BorderBrush="{Binding EdgeState, ElementName=Root, Converter={StaticResource StateBrush}}">
                 <StackPanel VerticalAlignment="Center">
                     <Ellipse Style="{StaticResource Lamp}"
                              Fill="{Binding EdgeState, ElementName=Root, Converter={StaticResource StateBrush}}" />
-                    <TextBlock Style="{StaticResource NodeLabel}" Text="CLOUDFLARE EDGE" />
+                    <TextBlock Style="{StaticResource NodeLabel}" Text="CLOUDFLARE EDGE"
+                               Foreground="{StaticResource RelayBrush}" />
                 </StackPanel>
             </Border>
             <TextBlock Style="{StaticResource NodeDetail}" Text="{Binding EdgeDetail, ElementName=Root}" />
         </StackPanel>
 
         <!-- ===== Conduit 2 ===== -->
-        <Grid Grid.Column="3" Width="104" Height="72">
+        <Grid Grid.Column="3" Width="96" Height="78">
             <Border Height="2" VerticalAlignment="Center" Background="{StaticResource LineBrush}" />
             <Border x:Name="Conduit2" Height="2" VerticalAlignment="Center"
                     Background="{StaticResource ConduitBrush}" Opacity="0" />
@@ -117,7 +120,7 @@
         </Grid>
 
         <!-- ===== Hop 3: Telegram ===== -->
-        <StackPanel Grid.Column="4" VerticalAlignment="Top">
+        <StackPanel Grid.Column="4" VerticalAlignment="Top" Width="152">
             <Border Style="{StaticResource NodePlate}"
                     BorderBrush="{Binding TelegramState, ElementName=Root, Converter={StaticResource StateBrush}}">
                 <StackPanel VerticalAlignment="Center">

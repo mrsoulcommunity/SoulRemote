@@ -6,6 +6,7 @@
 
     <UserControl.Resources>
         <vm:LinkStateToBrushConverter x:Key="StateBrush" />
+        <vm:BoolToVisibilityConverter x:Key="BoolToVis" />
 
         <Style x:Key="StatValue" TargetType="TextBlock" BasedOn="{StaticResource Display}">
             <Setter Property="FontSize" Value="24" />
@@ -19,7 +20,7 @@
         <StackPanel MaxWidth="900" HorizontalAlignment="Stretch">
 
             <!-- ===== Hero: the relay chain itself ===== -->
-            <Border Style="{StaticResource Card}" Padding="28,26">
+            <Border Style="{StaticResource Card}" Padding="28,24,28,22">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal">
                         <Ellipse Width="10" Height="10" VerticalAlignment="Center"
@@ -29,7 +30,7 @@
                     </StackPanel>
                     <TextBlock Text="{Binding Subhead}" Style="{StaticResource BodyDim}" Margin="0,6,0,0" />
 
-                    <ctrl:RelayLine Margin="0,30,0,10"
+                    <ctrl:RelayLine Margin="0,26,0,6"
                                     PcState="{Binding PcState}"
                                     EdgeState="{Binding EdgeState}"
                                     TelegramState="{Binding TelegramState}"
@@ -40,11 +41,13 @@
                                     TelegramLive="{Binding TelegramLive}"
                                     AnimationsEnabled="{Binding AnimationsEnabled}" />
 
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,22,0,0">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,0">
                         <Button Style="{StaticResource PrimaryButton}" Content="Start relay"
-                                Command="{Binding StartCommand}" Margin="0,0,10,0" />
-                        <Button Style="{StaticResource GhostButton}" Content="Stop"
-                                Command="{Binding StopCommand}" Margin="0,0,10,0" />
+                                Command="{Binding StartCommand}" Margin="0,0,10,0"
+                                Visibility="{Binding IsRelayRunning, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}" />
+                        <Button Style="{StaticResource GhostButton}" Content="Stop relay"
+                                Command="{Binding StopCommand}" Margin="0,0,10,0"
+                                Visibility="{Binding IsRelayRunning, Converter={StaticResource BoolToVis}}" />
                         <Button Style="{StaticResource GhostButton}" Content="Send test message"
                                 Command="{Binding TestMessageCommand}" Margin="0,0,10,0" />
                         <Button Style="{StaticResource GhostButton}" Content="Lock this PC"
@@ -81,7 +84,7 @@
                     <StackPanel>
                         <TextBlock Text="{Binding Uptime}" Style="{StaticResource StatValue}" />
                         <TextBlock Text="MACHINE UPTIME" Style="{StaticResource StatLabel}" />
-                        <TextBlock Text="{Binding BotHandle}" Style="{StaticResource DataDim}" Margin="0,8,0,0" />
+                        <TextBlock Text="{Binding BootedAt}" Style="{StaticResource DataDim}" Margin="0,8,0,0" />
                     </StackPanel>
                 </Border>
             </Grid>

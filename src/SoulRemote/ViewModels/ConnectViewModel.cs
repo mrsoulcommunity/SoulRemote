@@ -19,8 +19,12 @@ public sealed class ConnectViewModel : ViewModelBase
         _services = services;
 
         var s = _services.Settings.Current;
-        _cloudflareToken = s.CloudflareApiToken;
-        _telegramToken = s.TelegramBotToken;
+        // Saved tokens are deliberately NOT loaded into the fields: a secret should not sit
+        // on screen during a screen-share. Leaving a field blank keeps the saved value.
+        _cloudflareToken = string.Empty;
+        _telegramToken = string.Empty;
+        _hasSavedCloudflareToken = !string.IsNullOrWhiteSpace(s.CloudflareApiToken);
+        _hasSavedTelegramToken = !string.IsNullOrWhiteSpace(s.TelegramBotToken);
         _workerName = string.IsNullOrWhiteSpace(s.WorkerName) ? "soul-remote-proxy" : s.WorkerName;
         _workerUrl = s.WorkerUrl;
 
@@ -54,8 +58,21 @@ public sealed class ConnectViewModel : ViewModelBase
     private string _workerName;
     public string WorkerName { get => _workerName; set => SetProperty(ref _workerName, value); }
 
+    private bool _hasSavedCloudflareToken;
+    private bool _hasSavedTelegramToken;
+
+    public string CloudflareHint => _hasSavedCloudflareToken
+        ? "A token is already saved. Leave this blank to keep it, or paste a new one to replace it."
+        : "Create one with the \u201cEdit Cloudflare Workers\u201d template.";
+
+    public string TelegramHint => _hasSavedTelegramToken
+        ? "A bot token is already saved. Leave this blank to keep it, or paste a new one to replace it."
+        : "Ask @BotFather for /newbot, then paste the HTTP API token.";
+
+    /// <summary>Either field may be blank when a saved token can stand in for it.</summary>
     public bool CanConnect =>
-        !string.IsNullOrWhiteSpace(CloudflareToken) && !string.IsNullOrWhiteSpace(TelegramToken);
+        (!string.IsNullOrWhiteSpace(CloudflareToken) || _hasSavedCloudflareToken) &&
+        (!string.IsNullOrWhiteSpace(TelegramToken) || _hasSavedTelegramToken);
 
     // ---- outcome ----
 
@@ -99,11 +116,23 @@ public sealed class ConnectViewModel : ViewModelBase
 
         try
         {
+            // Fall back to the stored secret when the field was left blank.
+            var cf = string.IsNullOrWhiteSpace(CloudflareToken)
+                ? _services.Settings.Current.CloudflareApiToken : CloudflareToken;
+            var tg = string.IsNullOrWhiteSpace(TelegramToken)
+                ? _services.Settings.Current.TelegramBotToken : TelegramToken;
+
             var result = await _services.Orchestrator.RunAsync(
-                new ConnectionRequest(CloudflareToken, WorkerName, TelegramToken), _cts.Token);
+                new ConnectionRequest(cf, WorkerName, tg), _cts.Token);
 
             if (result.Success)
             {
+                _hasSavedCloudflareToken = true;
+                _hasSavedTelegramToken = true;
+                CloudflareToken = string.Empty;
+                TelegramToken = string.Empty;
+                OnPropertyChanged(nameof(CloudflareHint));
+                OnPropertyChanged(nameof(TelegramHint));
                 WorkerUrl = result.WorkerUrl ?? string.Empty;
                 Outcome = LinkState.Online;
                 Message = $"Connected as @{result.BotUsername}. Open Telegram and send /pair with the code on the dashboard.";

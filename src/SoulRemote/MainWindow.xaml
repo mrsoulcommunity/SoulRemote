@@ -75,6 +75,14 @@
                                      GroupName="Nav"
                                      Command="{Binding NavigateCommand}" CommandParameter="logs"
                                      IsChecked="{Binding CurrentKey, Mode=OneWay, Converter={StaticResource Equals}, ConverterParameter=logs}" />
+
+                        <TextBlock Text="QUICK CONTROLS" Style="{StaticResource Eyebrow}" Margin="22,22,22,8" />
+                        <Button Style="{StaticResource GhostButton}" Content="Lock" Margin="16,4"
+                                Command="{Binding LockCommand}" />
+                        <Button Style="{StaticResource GhostButton}" Content="Sleep" Margin="16,4"
+                                Command="{Binding SleepCommand}" />
+                        <Button Style="{StaticResource GhostButton}" Content="Display off" Margin="16,4"
+                                Command="{Binding DisplayOffCommand}" />
                     </StackPanel>
 
                     <!-- Persistent status: the one thing worth seeing from any page. -->
@@ -110,6 +118,8 @@
                 <!-- Title bar (drag surface + caption buttons) -->
                 <Grid Grid.Row="0" Height="38" Background="{StaticResource VoidBrush}"
                       MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                    <TextBlock Text="{Binding Crumb}" Style="{StaticResource Eyebrow}"
+                               VerticalAlignment="Center" Margin="32,0,0,0" HorizontalAlignment="Left" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                                 WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button Style="{StaticResource CaptionButton}" Content="&#xE921;"

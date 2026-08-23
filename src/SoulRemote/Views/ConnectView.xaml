@@ -39,7 +39,7 @@
                                      Text="{Binding CloudflareToken, UpdateSourceTrigger=PropertyChanged}"
                                      IsEnabled="{Binding IsIdle}" />
                             <TextBlock Style="{StaticResource BodyDim}" Margin="0,8,0,0" FontSize="12"
-                                       Text="Create one with the &quot;Edit Cloudflare Workers&quot; template." />
+                                       Text="{Binding CloudflareHint}" />
                             <Button Style="{StaticResource GhostButton}" Content="Open Cloudflare tokens"
                                     HorizontalAlignment="Left" Margin="0,10,0,0"
                                     Command="{Binding OpenCloudflareTokensCommand}" />
@@ -64,36 +64,38 @@
                                      Text="{Binding TelegramToken, UpdateSourceTrigger=PropertyChanged}"
                                      IsEnabled="{Binding IsIdle}" />
                             <TextBlock Style="{StaticResource BodyDim}" Margin="0,8,0,0" FontSize="12"
-                                       Text="Ask @BotFather for /newbot, then paste the HTTP API token." />
+                                       Text="{Binding TelegramHint}" />
                             <Button Style="{StaticResource GhostButton}" Content="Open BotFather"
                                     HorizontalAlignment="Left" Margin="0,10,0,0"
                                     Command="{Binding OpenBotFatherCommand}" />
                         </StackPanel>
                     </Border>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                        <Button Style="{StaticResource PrimaryButton}" Content="Connect"
-                                Command="{Binding ConnectCommand}" MinWidth="150"
-                                Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}" />
-                        <Button Style="{StaticResource GhostButton}" Content="Cancel"
-                                Command="{Binding CancelCommand}" MinWidth="150"
-                                Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
-                    </StackPanel>
-
-                    <Border Style="{StaticResource CardInset}" Margin="0,14,0,0"
-                            Visibility="{Binding Message, Converter={StaticResource HasText}}">
-                        <StackPanel Orientation="Horizontal">
-                            <Ellipse Width="8" Height="8" VerticalAlignment="Top" Margin="0,5,10,0"
-                                     Fill="{Binding Outcome, Converter={StaticResource StateBrush}}" />
-                            <TextBlock Text="{Binding Message}" Style="{StaticResource Body}" MaxWidth="440" />
-                        </StackPanel>
-                    </Border>
                 </StackPanel>
 
                 <!-- ===== Live pipeline ===== -->
                 <Border Grid.Column="1" Style="{StaticResource Card}" VerticalAlignment="Top">
                     <StackPanel>
-                        <TextBlock Text="BRING-UP SEQUENCE" Style="{StaticResource Eyebrow}" />
+                        <!-- The action sits with the panel that reports on it, so it is always
+                             visible without scrolling. -->
+                        <Button Style="{StaticResource PrimaryButton}" Content="Connect"
+                                Command="{Binding ConnectCommand}" HorizontalAlignment="Stretch"
+                                Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}" />
+                        <Button Style="{StaticResource GhostButton}" Content="Cancel"
+                                Command="{Binding CancelCommand}" HorizontalAlignment="Stretch"
+                                Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+
+                        <Border Style="{StaticResource CardInset}" Margin="0,14,0,4"
+                                Visibility="{Binding Message, Converter={StaticResource HasText}}">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="8" Height="8" VerticalAlignment="Top" Margin="0,5,10,0"
+                                         Fill="{Binding Outcome, Converter={StaticResource StateBrush}}" />
+                                <TextBlock Text="{Binding Message}" Style="{StaticResource Body}"
+                                           FontSize="12" MaxWidth="250" />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="BRING-UP SEQUENCE" Style="{StaticResource Eyebrow}" Margin="0,16,0,0" />
                         <ItemsControl ItemsSource="{Binding Steps}" Margin="0,16,0,0">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>

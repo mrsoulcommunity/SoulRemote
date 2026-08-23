@@ -41,6 +41,24 @@ public sealed class ShellViewModel : ViewModelBase
 
     public RelayCommand NavigateCommand { get; }
 
+    // Quick controls live in the rail so the most-used local actions are one click
+    // from any page. All three are unambiguous power actions on this machine.
+    public RelayCommand LockCommand { get; }
+    public RelayCommand SleepCommand { get; }
+    public RelayCommand DisplayOffCommand { get; }
+
+    private string _quickResult = string.Empty;
+    public string QuickResult { get => _quickResult; private set => SetProperty(ref _quickResult, value); }
+
+    /// <summary>Page name shown in the title bar, which is otherwise dead space.</summary>
+    public string Crumb => CurrentKey switch
+    {
+        "connect" => "CONNECT",
+        "settings" => "SETTINGS",
+        "logs" => "ACTIVITY",
+        _ => "DASHBOARD",
+    };
+
     public ShellViewModel(AppServices services)
     {
         _services = services;
@@ -51,6 +69,9 @@ public sealed class ShellViewModel : ViewModelBase
         Logs = new LogViewModel(services);
 
         NavigateCommand = new RelayCommand(p => Navigate(p as string ?? "dashboard"));
+        LockCommand = new RelayCommand(() => RunQuick(() => _services.System.Lock()));
+        SleepCommand = new RelayCommand(() => RunQuick(() => _services.System.Sleep()));
+        DisplayOffCommand = new RelayCommand(() => RunQuick(() => _services.System.MonitorOff()));
 
         // Land on whichever page has work to do: the wizard until the relay is set up.
         var configured = _services.Settings.Current.HasCloudflare && _services.Settings.Current.HasTelegram;
@@ -70,10 +91,17 @@ public sealed class ShellViewModel : ViewModelBase
             _ => Dashboard,
         };
         CurrentKey = key is "connect" or "settings" or "logs" ? key : "dashboard";
+        OnPropertyChanged(nameof(Crumb));
         // Settings changed on another page (Reduce motion, for one) only reach the
         // dashboard when it is next shown.
         if (CurrentKey == "dashboard")
             Dashboard.Refresh();
+    }
+
+    private void RunQuick(Func<string> action)
+    {
+        try { QuickResult = action(); }
+        catch (Exception ex) { QuickResult = ex.Message; }
     }
 
     private void OnBotStateChanged() => UiThread.Post(UpdateStatus);

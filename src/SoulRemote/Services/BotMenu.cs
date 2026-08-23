@@ -33,12 +33,17 @@ public static class BotMenu
     /// <summary>A rendered screen: what to say and which buttons to offer.</summary>
     public readonly record struct Screen(string Text, TgInlineKeyboardMarkup Keyboard);
 
-    public static Screen Home(string machine) => new(
-        $"🎛 <b>{TextUtil.Html(machine)}</b>\nPick a control.",
+    /// <summary>
+    /// Home doubles as the status panel: opening the bot should answer "how is my PC?"
+    /// without a further tap. That is also what gives Refresh something to do, and the
+    /// changing timestamp keeps Telegram from rejecting the edit as unmodified.
+    /// </summary>
+    public static Screen Home(string machine, string status) => new(
+        $"🎛 <b>{TextUtil.Html(machine)}</b>\n{status}",
         Keyboard(
             Row(("📸 Capture", "m:cap"), ("⚡ Power", "m:pwr")),
             Row(("🔊 Audio & media", "m:aud"), ("⌨️ Input", "m:inp")),
-            Row(("📊 System", "m:sys"), ("⚙️ Processes", "m:prc")),
+            Row(("📊 System", "m:sys"), ("📋 Processes", "m:prc")),
             Row(("🔄 Refresh", "m:home"))));
 
     public static Screen Capture(int screenCount)

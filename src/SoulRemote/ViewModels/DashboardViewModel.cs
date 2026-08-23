@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Threading;
 using SoulRemote.Localization;
 using SoulRemote.Models;
 using SoulRemote.Services;
@@ -31,8 +32,27 @@ public sealed class DashboardViewModel : ViewModelBase
         _services.Router.ChatAuthorized += OnChatAuthorized;
         _services.Router.CommandHandled += OnCommandHandled;
 
+        // Uptime is the one tile that should visibly move. It was only recomputed on a
+        // bot state change, and a healthy relay raises none — so on the page you land
+        // on, a counter reading minutes and seconds sat still.
+        _tick = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(30),
+        };
+        _tick.Tick += (_, _) => RefreshUptime();
+        _tick.Start();
+
         GeneratePairingCode();
         Refresh();
+    }
+
+    private readonly DispatcherTimer _tick;
+
+    private void RefreshUptime()
+    {
+        var up = TimeSpan.FromMilliseconds(Environment.TickCount64);
+        Uptime = TextUtil.HumanDuration(up);
+        BootedAt = Strings.Format("ui.dash.since", DateTime.Now.Subtract(up).ToString("d MMM, HH:mm"));
     }
 
     // ---- relay chain ----
@@ -188,7 +208,10 @@ public sealed class DashboardViewModel : ViewModelBase
             _services.Router.Forget(id);
         s.AuthorizedChatIds.Clear();
         s.ChatNames.Clear();
-        _services.Settings.Save(s);
+        // "I cut those devices off" must not be reported when the write did not land:
+        // Refresh() would simply redraw the rows and leave the chats authorized.
+        if (!_services.Settings.Save(s))
+            Subhead = Strings.Get("ui.settings.savefailed");
         Refresh();
     }
 
@@ -203,7 +226,8 @@ public sealed class DashboardViewModel : ViewModelBase
 
         var s = current.Clone();
         s.AuthorizedChatIds.Remove(chatId);
-        _services.Settings.Save(s);
+        if (!_services.Settings.Save(s))
+            Subhead = Strings.Get("ui.settings.savefailed");
         // Drop anything the router still holds for that chat: a half-finished prompt
         // or a folder listing must not survive the chat losing access.
         _services.Router.Forget(chatId);
@@ -272,9 +296,7 @@ public sealed class DashboardViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasPairedChats));
 
         CommandCount = _services.Router.CommandsHandled;
-        var up = TimeSpan.FromMilliseconds(Environment.TickCount64);
-        Uptime = TextUtil.HumanDuration(up);
-        BootedAt = Strings.Format("ui.dash.since", DateTime.Now.Subtract(up).ToString("d MMM, HH:mm"));
+        RefreshUptime();
         IsRelayRunning = running;
         OnPropertyChanged(nameof(AnimationsEnabled));
 

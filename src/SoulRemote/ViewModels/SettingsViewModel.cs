@@ -62,6 +62,7 @@ public sealed class SettingsViewModel : ViewModelBase
         _notifyOnStartup = s.NotifyOnStartup;
         _allowShellCommands = s.AllowShellCommands;
         _allowFileAccess = s.AllowFileAccess;
+        _allowInputInjection = s.AllowInputInjection;
         _reduceMotion = s.ReduceMotion;
         _pollTimeoutSeconds = s.PollTimeoutSeconds <= 0 ? 25 : s.PollTimeoutSeconds;
         _logRetentionDays = s.LogRetentionDays;
@@ -76,8 +77,13 @@ public sealed class SettingsViewModel : ViewModelBase
             return;
         var s = _services.Settings.Current.Clone();
         mutate(s);
-        _services.Settings.Save(s);
-        SavedAt = Strings.Format("ui.settings.saved", DateTime.Now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture));
+        // A write that did not land must not say it did: the toggle is already showing
+        // the new position, and "Saved 14:02:11" underneath it would be the only thing
+        // the user had to go on.
+        SavedAt = _services.Settings.Save(s)
+            ? Strings.Format("ui.settings.saved",
+                DateTime.Now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture))
+            : Strings.Get("ui.settings.savefailed");
     }
 
     private string _savedAt = string.Empty;
@@ -128,6 +134,13 @@ public sealed class SettingsViewModel : ViewModelBase
     {
         get => _allowFileAccess;
         set { if (SetProperty(ref _allowFileAccess, value)) Persist(s => s.AllowFileAccess = value); }
+    }
+
+    private bool _allowInputInjection;
+    public bool AllowInputInjection
+    {
+        get => _allowInputInjection;
+        set { if (SetProperty(ref _allowInputInjection, value)) Persist(s => s.AllowInputInjection = value); }
     }
 
     private bool _reduceMotion;

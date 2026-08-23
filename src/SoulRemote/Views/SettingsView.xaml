@@ -81,6 +81,10 @@
                         <CheckBox Style="{StaticResource RiskToggleSwitch}" Content="{p:T ui.settings.files.label}"
                                   IsChecked="{Binding AllowFileAccess}" />
                         <TextBlock Style="{StaticResource OptionHint}" Text="{p:T ui.settings.files.hint}" />
+
+                        <CheckBox Style="{StaticResource RiskToggleSwitch}" Content="{p:T ui.settings.typing.label}"
+                                  IsChecked="{Binding AllowInputInjection}" />
+                        <TextBlock Style="{StaticResource OptionHint}" Text="{p:T ui.settings.typing.hint}" />
                     </StackPanel>
 
                     <TextBlock Text="{p:T ui.settings.downloads}" Style="{StaticResource FieldLabel}" Margin="0,6,0,6" />

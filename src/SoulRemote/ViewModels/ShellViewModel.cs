@@ -49,6 +49,7 @@ public sealed class ShellViewModel : ViewModelBase
     public RelayCommand DisplayOffCommand { get; }
 
     private string _quickResult = string.Empty;
+    /// <summary>The outcome of the last rail control, shown under the status card.</summary>
     public string QuickResult { get => _quickResult; private set => SetProperty(ref _quickResult, value); }
 
     /// <summary>Page name shown in the title bar, which is otherwise dead space.</summary>
@@ -123,10 +124,24 @@ public sealed class ShellViewModel : ViewModelBase
             Dashboard.Refresh();
     }
 
+    /// <summary>
+    /// Runs a rail control and reports what happened. Both halves matter: the result
+    /// goes on screen next to the buttons, and it also goes to the activity log —
+    /// "Sleep" on a machine with sleep disabled throws, and without the log there
+    /// would be no record of it anywhere.
+    /// </summary>
     private void RunQuick(Func<string> action)
     {
-        try { QuickResult = action(); }
-        catch (Exception ex) { QuickResult = ex.Message; }
+        try
+        {
+            QuickResult = action();
+            _services.Log.Info(QuickResult);
+        }
+        catch (Exception ex)
+        {
+            QuickResult = ex.Message;
+            _services.Log.Error("Quick control failed", ex);
+        }
     }
 
     private void OnBotStateChanged() => UiThread.Post(UpdateStatus);

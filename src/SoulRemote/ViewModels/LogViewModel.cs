@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Windows;
 using System.Windows.Data;
+using SoulRemote.Localization;
 using SoulRemote.Services;
 
 namespace SoulRemote.ViewModels;
@@ -21,7 +23,7 @@ public sealed class LogViewModel : ViewModelBase
         View = CollectionViewSource.GetDefaultView(Entries);
         View.Filter = Matches;
 
-        ClearCommand = new RelayCommand(() => _services.Log.Clear());
+        ClearCommand = new RelayCommand(Clear);
         SetFilterCommand = new RelayCommand(p => Filter = p as string ?? "all");
     }
 
@@ -46,6 +48,23 @@ public sealed class LogViewModel : ViewModelBase
             "errors" => entry.Level == LogLevel.Error,
             _ => true,
         };
+    }
+
+    /// <summary>
+    /// Clears the list and the files behind it. The confirmation is there because the
+    /// files are the only durable record of what the relay did, and deleting them is
+    /// not undoable — but the list alone would be a false promise of privacy.
+    /// </summary>
+    private void Clear()
+    {
+        var answer = MessageBox.Show(
+            Strings.Get("ui.logs.clear.confirm"), Strings.Get("ui.dialog.title"),
+            MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes)
+            return;
+
+        _services.Log.Clear();
+        _services.Log.DeleteAllFiles();
     }
 
     public RelayCommand ClearCommand { get; }

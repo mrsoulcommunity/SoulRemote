@@ -3,8 +3,16 @@ name: build
 on:
   push:
     branches: ["**"]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
+
+# A same-repo pull request fires both `push` and `pull_request`, so without this
+# every commit on a PR branch builds twice on a Windows runner — which bills at ten
+# times the Linux rate. Superseded runs are cancelled for the same reason.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -19,22 +27,85 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
+      # The self-contained publish pulls the whole win-x64 runtime pack on every run.
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
       - name: Restore
         run: dotnet restore SoulRemote.sln
 
       - name: Build
         run: dotnet build SoulRemote.sln -c Release --no-restore
 
+      # The core is plain net8.0 precisely so this step can exist. It covers the bot's
+      # dispatch, the Telegram client, settings, the file browser and the string
+      # catalogue — everything that used to be untestable behind WPF.
+      - name: Test
+        run: dotnet test SoulRemote.sln -c Release --no-build --logger trx --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults
+          if-no-files-found: warn
+
+      # The worker deployed by the app is embedded straight from cloudflare/worker.js,
+      # so a syntax error there ships silently and only fails at the edge.
+      - name: Check the worker parses
+        run: node --check cloudflare/worker.js
+
+      # A tagged build stamps its own version; every other build stays at the csproj
+      # default. GitHub's expression language has no substring, so the "v" prefix is
+      # trimmed here rather than inline.
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $version = if ("${{ github.ref }}".StartsWith("refs/tags/v")) {
+            "${{ github.ref_name }}".Substring(1)
+          } else { "1.0.0" }
+          "value=$version" | Out-File -Append -Encoding ascii $env:GITHUB_OUTPUT
+          Write-Host "Version: $version"
+
       - name: Publish (self-contained x64)
         run: >
           dotnet publish src/SoulRemote/SoulRemote.csproj
           -c Release -r win-x64 --self-contained true
-          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:PublishSingleFile=true
+          -p:Version=${{ steps.version.outputs.value }}
           -o publish
+
+      # Handed round by Telegram rather than downloaded from a store, this binary needs
+      # a checksum its recipients can actually check.
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash publish/SoulRemote.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  SoulRemote.exe" | Out-File -Encoding ascii publish/SoulRemote.exe.sha256
+          Write-Host "SHA-256: $hash"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: SoulRemote-win-x64
-          path: publish/SoulRemote.exe
-          if-no-files-found: warn
+          path: |
+            publish/SoulRemote.exe
+            publish/SoulRemote.exe.sha256
+          if-no-files-found: error
+
+      # A tag turns the same artefact into something anyone can download without a
+      # GitHub account, and that does not expire after ninety days.
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            publish/SoulRemote.exe
+            publish/SoulRemote.exe.sha256
+          generate_release_notes: true

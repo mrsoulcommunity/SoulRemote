@@ -99,11 +99,33 @@ public sealed class TelegramClient : ITelegramClient, IDisposable
     {
         _log = log;
         // Timeout must exceed the longest long-poll; cancellation tokens do the fine control.
-        _http = handler is null ? new HttpClient() : new HttpClient(handler, disposeHandler: false);
+        _http = handler is null
+            ? new HttpClient(CreateHandler(), disposeHandler: true)
+            : new HttpClient(handler, disposeHandler: false);
         _http.Timeout = TimeSpan.FromSeconds(120);
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("SoulRemote/1.0");
         _ownsHttp = true;
     }
+
+
+    /// <summary>
+    /// The transport every outbound call shares.
+    ///
+    /// The default handler pools connections for the life of the process. On the
+    /// networks this app is built for that is the wrong default by a wide margin: a
+    /// censored link changes routes and DNS answers under you, and a pooled connection
+    /// to an address that has stopped working keeps being reused until something
+    /// forces it closed. Capping the lifetime means the relay re-resolves and
+    /// re-connects on its own within a couple of minutes instead of staying wedged.
+    /// </summary>
+    internal static HttpMessageHandler CreateHandler() => new SocketsHttpHandler
+    {
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+        PooledConnectionIdleTimeout = TimeSpan.FromSeconds(90),
+        ConnectTimeout = TimeSpan.FromSeconds(15),
+        AutomaticDecompression = System.Net.DecompressionMethods.All,
+        EnableMultipleHttp2Connections = true,
+    };
 
     public void Configure(string workerUrl, string botToken, string proxySecret)
     {
@@ -409,7 +431,9 @@ public sealed class TelegramClient : ITelegramClient, IDisposable
                 (int)resp.StatusCode, null, null, IsTransientStatus(resp.StatusCode));
         if (!parsed.Ok)
         {
-            var retryAfter = parsed.Parameters?.RetryAfter is { } seconds && seconds > 0
+            // A retry_after of 0 is still flood control — it means "try again now" —
+            // so it must not fall through to the generic failure path.
+            var retryAfter = parsed.Parameters?.RetryAfter is { } seconds && seconds >= 0
                 ? TimeSpan.FromSeconds(seconds)
                 : (TimeSpan?)null;
             var code = parsed.ErrorCode ?? (int)resp.StatusCode;

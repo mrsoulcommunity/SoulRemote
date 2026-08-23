@@ -49,7 +49,10 @@ public sealed class CloudflareService : ICloudflareService
     public CloudflareService(ILogService log)
     {
         _log = log;
-        _http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        _http = new HttpClient(TelegramClient.CreateHandler(), disposeHandler: true)
+        {
+            Timeout = TimeSpan.FromSeconds(60),
+        };
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("SoulRemote/1.0");
     }
 

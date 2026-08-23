@@ -16,36 +16,43 @@ public sealed class DpapiSecretProtector : ISecretProtector
     // Extra entropy binds ciphertext to this application.
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("SoulRemote::v1::dpapi");
 
-    public string Protect(string? plainText)
+    public bool TryProtect(string? plainText, out string cipherText)
     {
+        cipherText = string.Empty;
         if (string.IsNullOrEmpty(plainText))
-            return string.Empty;
+            return true;
         try
         {
             var bytes = Encoding.UTF8.GetBytes(plainText);
-            var encrypted = ProtectedData.Protect(bytes, Entropy, DataProtectionScope.CurrentUser);
-            return Convert.ToBase64String(encrypted);
+            cipherText = Convert.ToBase64String(
+                ProtectedData.Protect(bytes, Entropy, DataProtectionScope.CurrentUser));
+            return true;
         }
         catch
         {
-            // If protection fails, fall back to storing nothing rather than plaintext.
-            return string.Empty;
+            // Reported rather than swallowed: writing "" here would replace a working
+            // token with nothing, and the user would have no way to know why.
+            return false;
         }
     }
 
-    public string Unprotect(string? cipherText)
+    public bool TryUnprotect(string? cipherText, out string plainText)
     {
+        plainText = string.Empty;
         if (string.IsNullOrEmpty(cipherText))
-            return string.Empty;
+            return true;
         try
         {
             var encrypted = Convert.FromBase64String(cipherText);
-            var bytes = ProtectedData.Unprotect(encrypted, Entropy, DataProtectionScope.CurrentUser);
-            return Encoding.UTF8.GetString(bytes);
+            plainText = Encoding.UTF8.GetString(
+                ProtectedData.Unprotect(encrypted, Entropy, DataProtectionScope.CurrentUser));
+            return true;
         }
         catch
         {
-            return string.Empty;
+            // A settings file copied from another user or machine lands here, as does a
+            // profile DPAPI cannot reach yet. Either way the stored value is kept.
+            return false;
         }
     }
 }

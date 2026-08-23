@@ -110,7 +110,14 @@ public sealed class FileBrowser
     {
         Directory.CreateDirectory(folder);
 
-        var name = Path.GetFileName(suggestedName ?? string.Empty);
+        // Both separators are stripped explicitly rather than relying on
+        // Path.GetFileName: that only knows the host's own separator, and a name
+        // arriving from Telegram was typed on some other machine entirely.
+        var name = (suggestedName ?? string.Empty);
+        var lastSeparator = name.LastIndexOfAny(new[] { '/', '\\', ':' });
+        if (lastSeparator >= 0)
+            name = name[(lastSeparator + 1)..];
+        name = name.Trim().Trim('.');
         if (string.IsNullOrWhiteSpace(name))
             name = "file";
         foreach (var bad in Path.GetInvalidFileNameChars())

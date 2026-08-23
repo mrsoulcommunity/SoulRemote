@@ -51,6 +51,14 @@ public sealed class AppSettings
     /// <summary>Allow browsing folders, fetching files and opening local paths.</summary>
     public bool AllowFileAccess { get; set; } = false;
 
+    /// <summary>
+    /// Allow typing into the focused window. Off by default, in line with the other
+    /// two: synthetic keystrokes plus a focused terminal reach the same place /cmd
+    /// does, so leaving this open while /cmd is described as the master switch for
+    /// running commands would make that description untrue.
+    /// </summary>
+    public bool AllowInputInjection { get; set; } = false;
+
     /// <summary>Launch Soul Remote automatically when the user signs in.</summary>
     public bool StartWithWindows { get; set; } = false;
 
@@ -131,6 +139,7 @@ public sealed class AppSettings
             ChatNames = new Dictionary<string, string>(ChatNames),
             AllowShellCommands = AllowShellCommands,
             AllowFileAccess = AllowFileAccess,
+            AllowInputInjection = AllowInputInjection,
             StartWithWindows = StartWithWindows,
             AutoStartBot = AutoStartBot,
             StartMinimized = StartMinimized,

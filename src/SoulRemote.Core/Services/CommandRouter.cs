@@ -215,7 +215,7 @@ public sealed class CommandRouter
             "cap" => BotMenu.Capture(SafeScreenCount()),
             "pwr" => BotMenu.Power(),
             "aud" => BotMenu.Audio(),
-            "inp" => BotMenu.Input(),
+            "inp" => BotMenu.Input(settings.AllowInputInjection),
             "sys" => BotMenu.System(),
             "prc" => BotMenu.Processes(settings.AllowShellCommands),
             "fil" => BotMenu.Files(settings.AllowFileAccess),
@@ -325,6 +325,11 @@ public sealed class CommandRouter
         if (kind is PromptKind.Path or PromptKind.GetFile && !_settings.Current.AllowFileAccess)
         {
             await _telegram.AnswerCallbackAsync(callbackId, Strings.Get("bot.files.off"), true, ct).ConfigureAwait(false);
+            return;
+        }
+        if (kind == PromptKind.TypeText && !_settings.Current.AllowInputInjection)
+        {
+            await _telegram.AnswerCallbackAsync(callbackId, Strings.Get("bot.type.offtoast"), true, ct).ConfigureAwait(false);
             return;
         }
 
@@ -658,6 +663,11 @@ public sealed class CommandRouter
                 await SendResultAsync(chatId, () => _system.SetClipboardText(input), ct).ConfigureAwait(false);
                 return;
             case PromptKind.TypeText:
+                if (RequireTyping(chatId, ct) is { } refusedType)
+                {
+                    await refusedType.ConfigureAwait(false);
+                    return;
+                }
                 await SendResultAsync(chatId, () => _system.TypeText(input), ct).ConfigureAwait(false);
                 return;
             case PromptKind.OpenLink:
@@ -693,6 +703,12 @@ public sealed class CommandRouter
         => _settings.Current.AllowFileAccess
             ? null
             : SendTextAsync(chatId, Strings.Get("bot.file.off"), ct);
+
+    /// <summary>The same, for typing into the focused window.</summary>
+    private Task? RequireTyping(long chatId, CancellationToken ct)
+        => _settings.Current.AllowInputInjection
+            ? null
+            : SendTextAsync(chatId, Strings.Get("bot.type.off"), ct);
 
     private async Task RunTypedCommandAsync(long chatId, string cmd, string? arg, CancellationToken ct)
     {
@@ -769,7 +785,9 @@ public sealed class CommandRouter
                     await AskInChatAsync(chatId, PromptKind.OpenLink, ct).ConfigureAwait(false);
                 break;
             case "type":
-                if (!string.IsNullOrWhiteSpace(arg))
+                if (!_settings.Current.AllowInputInjection)
+                    await SendTextAsync(chatId, Strings.Get("bot.type.off"), ct).ConfigureAwait(false);
+                else if (!string.IsNullOrWhiteSpace(arg))
                     await SendResultAsync(chatId, () => _system.TypeText(arg!), ct).ConfigureAwait(false);
                 else
                     await AskInChatAsync(chatId, PromptKind.TypeText, ct).ConfigureAwait(false);

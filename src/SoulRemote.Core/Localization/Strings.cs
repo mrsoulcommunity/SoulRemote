@@ -236,6 +236,10 @@ public static class Strings
         ["bot.open.weblinksonly"] = ("🔒 Only web links are allowed. To open files and folders on this PC, turn on file access in the Soul Remote app.",
                                      "🔒 فقط لینک وب مجاز است. برای باز کردن فایل و پوشه روی این رایانه، دسترسی فایل را در برنامهٔ سول ریموت روشن کنید."),
         ["bot.file.off"] = ("🔒 File access is switched off in the desktop app.", "🔒 دسترسی به فایل در برنامهٔ دسکتاپ خاموش است."),
+        ["bot.type.off"] = ("🔒 Typing into the focused window is switched off in the desktop app.",
+                            "🔒 تایپ در پنجرهٔ فعال در برنامهٔ دسکتاپ خاموش است."),
+        ["bot.type.offtoast"] = ("Typing is switched off in the desktop app.", "تایپ در برنامهٔ دسکتاپ خاموش است."),
+        ["bot.input.typingoff"] = ("Typing is switched off in the desktop app.", "تایپ در برنامهٔ دسکتاپ خاموش است."),
         ["bot.clipboard.empty"] = ("Clipboard holds no text.", "کلیپ‌بورد متنی ندارد."),
         ["bot.clipboard.caption"] = ("Clipboard", "کلیپ‌بورد"),
         ["bot.shell.caption"] = ("Command output", "خروجی دستور"),
@@ -332,6 +336,7 @@ public static class Strings
         ["ui.chrome.minimise"] = ("Minimise", "کوچک کردن"),
         ["ui.chrome.maximise"] = ("Maximise", "بزرگ کردن"),
         ["ui.chrome.hide"] = ("Hide to tray", "بردن به سینی"),
+        ["ui.chrome.restore"] = ("Restore", "بازگرداندن"),
 
         // ================= Desktop: status =================
         ["ui.status.online"] = ("Relay online", "رله آنلاین"),
@@ -429,6 +434,7 @@ public static class Strings
         ["ui.settings.title"] = ("Settings", "تنظیمات"),
         ["ui.settings.autosave"] = ("Changes save as you make them.", "تغییرات همان لحظه ذخیره می‌شوند."),
         ["ui.settings.saved"] = ("Saved {0}", "ذخیره شد {0}"),
+        ["ui.settings.savefailed"] = ("Not saved — see Activity for the reason.", "ذخیره نشد — دلیلش را در «فعالیت» ببینید."),
         ["ui.settings.language"] = ("LANGUAGE", "زبان"),
         ["ui.settings.language.hint"] = ("Applies to this window and to everything the bot says in Telegram.", "روی این پنجره و روی هر چیزی که بات در تلگرام می‌گوید اعمال می‌شود."),
         ["ui.settings.startup"] = ("STARTUP", "راه‌اندازی"),
@@ -461,6 +467,9 @@ public static class Strings
                                             "کنترل برق، اسکرین‌شات، رسانه و پروسه‌ها همیشه در دسترس چت‌های متصل است. این دو تا وقتی روشنشان نکنید خاموش‌اند."),
         ["ui.settings.shell.label"] = ("Allow shell commands (/cmd)", "اجازهٔ اجرای دستور (/cmd)"),
         ["ui.settings.files.label"] = ("Allow browsing and fetching files", "اجازهٔ مرور و دریافت فایل"),
+        ["ui.settings.typing.label"] = ("Allow typing into the focused window", "اجازهٔ تایپ در پنجرهٔ فعال"),
+        ["ui.settings.typing.hint"] = ("Lets a paired chat send keystrokes to whatever is in front on this PC — including a terminal.",
+                                       "به چت متصل اجازه می‌دهد به هر چیزی که روی این رایانه در پیش‌زمینه است کلید بفرستد — از جمله ترمینال."),
         ["ui.settings.onthispc"] = ("ON THIS PC", "روی این رایانه"),
         ["ui.settings.dpapi"] = ("Tokens in this file are encrypted with Windows DPAPI and can only be read by your account on this machine.",
                                  "توکن‌های این فایل با DPAPI ویندوز رمزنگاری شده‌اند و فقط با حساب شما روی همین رایانه خوانده می‌شوند."),
@@ -478,6 +487,8 @@ public static class Strings
         ["ui.logs.errors"] = ("Errors", "خطاها"),
         ["ui.logs.clear"] = ("Clear", "پاک کردن"),
         ["ui.logs.empty"] = ("Nothing logged yet.", "هنوز چیزی ثبت نشده است."),
+        ["ui.logs.clear.confirm"] = ("Clear the activity log? This also deletes the log files on disk, which name your paired chats and relay address.",
+                                     "گزارش فعالیت پاک شود؟ فایل‌های گزارش روی دیسک هم حذف می‌شوند — همان‌هایی که چت‌های متصل و نشانی رله را نام می‌برند."),
 
         // ================= Desktop: tray & dialogs =================
         ["ui.tray.open"] = ("Open", "باز کردن"),

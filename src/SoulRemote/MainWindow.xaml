@@ -21,6 +21,24 @@
     <Window.Resources>
         <vm:LinkStateToBrushConverter x:Key="StateBrush" />
         <vm:EqualsConverter x:Key="Equals" />
+        <vm:TextToVisibilityConverter x:Key="HasText" />
+
+        <!--
+            Maximise and restore are the same button, and with CaptionHeight="0" there
+            is no OS chrome to fall back on — so a fixed glyph would be telling the
+            user the wrong thing half the time.
+        -->
+        <Style x:Key="MaximiseButton" TargetType="Button" BasedOn="{StaticResource CaptionButton}">
+            <Setter Property="Content" Value="&#xE922;" />
+            <Setter Property="ToolTip" Value="{p:T ui.chrome.maximise}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}"
+                             Value="Maximized">
+                    <Setter Property="Content" Value="&#xE923;" />
+                    <Setter Property="ToolTip" Value="{p:T ui.chrome.restore}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
 
         <!-- Page routing: each child view model resolves to its view. -->
         <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
@@ -101,6 +119,11 @@
                             </StackPanel>
                             <TextBlock Text="{Binding MachineName}" Style="{StaticResource DataDim}" Margin="0,7,0,0" />
                             <TextBlock Text="{Binding Version}" Style="{StaticResource DataDim}" Margin="0,2,0,0" />
+                            <!-- What the three quick controls above actually did. -->
+                            <TextBlock Text="{Binding QuickResult}" Style="{StaticResource DataDim}"
+                                       Margin="0,8,0,0" TextWrapping="Wrap"
+                                       Foreground="{StaticResource SignalBrush}"
+                                       Visibility="{Binding QuickResult, Converter={StaticResource HasText}}" />
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -126,8 +149,7 @@
                                 WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button Style="{StaticResource CaptionButton}" Content="&#xE921;"
                                 Click="Minimize_Click" ToolTip="{p:T ui.chrome.minimise}" />
-                        <Button Style="{StaticResource CaptionButton}" Content="&#xE922;"
-                                Click="Maximize_Click" ToolTip="{p:T ui.chrome.maximise}" />
+                        <Button Style="{StaticResource MaximiseButton}" Click="Maximize_Click" />
                         <Button Style="{StaticResource CloseButton}" Content="&#xE8BB;"
                                 Click="Close_Click" ToolTip="{p:T ui.chrome.hide}" />
                     </StackPanel>

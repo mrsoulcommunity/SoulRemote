@@ -34,6 +34,9 @@ public interface ILogService
 
     /// <summary>Deletes log files older than <paramref name="days"/>. Returns how many went.</summary>
     int PruneOlderThan(int days);
+
+    /// <summary>Deletes every log file on disk. Returns how many went.</summary>
+    int DeleteAllFiles();
 }
 
 /// <summary>
@@ -49,7 +52,6 @@ public sealed class LogService : ILogService
     private readonly ObservableCollection<LogEntry> _entries = new();
     private readonly object _fileLock = new();
     private readonly IUiDispatcher _dispatcher;
-    private readonly string _logFilePath;
 
     public ReadOnlyObservableCollection<LogEntry> Entries { get; }
     public string LogDirectory { get; }
@@ -65,9 +67,16 @@ public sealed class LogService : ILogService
         try { Directory.CreateDirectory(LogDirectory); }
         catch { /* logging must never stop the app from starting */ }
 
-        var stamp = DateTime.Now.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
-        _logFilePath = Path.Combine(LogDirectory, $"{FilePrefix}{stamp}{FileSuffix}");
     }
+
+    /// <summary>
+    /// Today's log file, resolved per write rather than pinned at construction.
+    /// Soul Remote is meant to run for weeks — start with Windows, live in the tray —
+    /// so "the process started on the 3rd" is the normal case, and a path captured
+    /// then would file every entry from the 4th onward under the 3rd.
+    /// </summary>
+    private string CurrentLogFile => Path.Combine(LogDirectory,
+        FilePrefix + DateTime.Now.ToString("yyyyMMdd", CultureInfo.InvariantCulture) + FileSuffix);
 
     public void Debug(string message) => Log(LogLevel.Debug, message);
     public void Info(string message) => Log(LogLevel.Info, message);
@@ -88,6 +97,27 @@ public sealed class LogService : ILogService
     }
 
     public void Clear() => _dispatcher.Post(_entries.Clear);
+
+    /// <summary>
+    /// Deletes every log file, including today's. "Clear the activity log" plainly
+    /// means the record goes, and the record is on disk: the log names paired chat
+    /// ids, the bot handle and the relay URL, so emptying only the in-memory list
+    /// would leave exactly what the user was trying to remove.
+    /// </summary>
+    public int DeleteAllFiles()
+    {
+        var removed = 0;
+        try
+        {
+            foreach (var path in Directory.EnumerateFiles(LogDirectory, FilePrefix + "*" + FileSuffix))
+            {
+                try { File.Delete(path); removed++; }
+                catch { /* in use or read-only: leave it */ }
+            }
+        }
+        catch { /* the folder may have gone; nothing to delete */ }
+        return removed;
+    }
 
     /// <summary>
     /// Log files are named by date, so age comes from the name rather than the
@@ -115,7 +145,7 @@ public sealed class LogService : ILogService
                     continue;
                 if (date >= cutoff)
                     continue;
-                if (string.Equals(path, _logFilePath, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(path, CurrentLogFile, StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 try { File.Delete(path); removed++; }
@@ -131,7 +161,7 @@ public sealed class LogService : ILogService
         try
         {
             lock (_fileLock)
-                File.AppendAllText(_logFilePath, entry.Display + Environment.NewLine);
+                File.AppendAllText(CurrentLogFile, entry.Display + Environment.NewLine);
         }
         catch
         {

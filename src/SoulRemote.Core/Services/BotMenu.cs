@@ -127,13 +127,23 @@ public static class BotMenu
             Row((T("bot.audio.setlevel"), "i:vol")),
             Row((T("bot.menu.back"), "m:home"))));
 
-    public static Screen Input() => new(
-        T("bot.input.title") + "\n" + T("bot.input.subtitle"),
-        Keyboard(
+    public static Screen Input(bool typingAllowed)
+    {
+        var rows = new List<List<TgInlineKeyboardButton>>
+        {
             Row((T("bot.input.readclip"), "a:clip")),
-            Row((T("bot.input.setclip"), "i:clip"), (T("bot.input.type"), "i:type")),
-            Row((T("bot.input.open"), "i:open"), (T("bot.input.speak"), "i:say")),
-            Row((T("bot.menu.back"), "m:home"))));
+        };
+        rows.Add(typingAllowed
+            ? Row((T("bot.input.setclip"), "i:clip"), (T("bot.input.type"), "i:type"))
+            : Row((T("bot.input.setclip"), "i:clip")));
+        rows.Add(Row((T("bot.input.open"), "i:open"), (T("bot.input.speak"), "i:say")));
+        rows.Add(Row((T("bot.menu.back"), "m:home")));
+
+        var text = T("bot.input.title") + "\n" + T("bot.input.subtitle");
+        if (!typingAllowed)
+            text += "\n" + T("bot.input.typingoff");
+        return new Screen(text, new TgInlineKeyboardMarkup { InlineKeyboard = rows });
+    }
 
     public static Screen System() => new(
         T("bot.system.title"),

@@ -40,6 +40,12 @@
             <Setter Property="Foreground" Value="{StaticResource InkDimBrush}" />
         </Style>
 
+        <!--
+            The caption under each hop is capped at 150px and ellipsised, and the edge
+            hop's caption is a workers.dev URL that is always longer than that. A
+            TextBlock cannot be selected either, so without a tooltip the relay address
+            is on screen and unreadable at the same time.
+        -->
         <Style x:Key="NodeDetail" TargetType="TextBlock" BasedOn="{StaticResource DataDim}">
             <Setter Property="HorizontalAlignment" Value="Center" />
             <Setter Property="Margin" Value="0,9,0,0" />
@@ -79,7 +85,8 @@
                     <TextBlock Style="{StaticResource NodeLabel}" Text="{p:T ui.relay.pc}" />
                 </StackPanel>
             </Border>
-            <TextBlock Style="{StaticResource NodeDetail}" Text="{Binding PcDetail, ElementName=Root}" />
+            <TextBlock Style="{StaticResource NodeDetail}" Text="{Binding PcDetail, ElementName=Root}"
+                       ToolTip="{Binding PcDetail, ElementName=Root}" />
         </StackPanel>
 
         <!-- ===== Conduit 1 ===== -->
@@ -105,7 +112,8 @@
                                Foreground="{StaticResource RelayBrush}" />
                 </StackPanel>
             </Border>
-            <TextBlock Style="{StaticResource NodeDetail}" Text="{Binding EdgeDetail, ElementName=Root}" />
+            <TextBlock Style="{StaticResource NodeDetail}" Text="{Binding EdgeDetail, ElementName=Root}"
+                       ToolTip="{Binding EdgeDetail, ElementName=Root}" />
         </StackPanel>
 
         <!-- ===== Conduit 2 ===== -->
@@ -130,7 +138,8 @@
                     <TextBlock Style="{StaticResource NodeLabel}" Text="{p:T ui.relay.telegram}" />
                 </StackPanel>
             </Border>
-            <TextBlock Style="{StaticResource NodeDetail}" Text="{Binding TelegramDetail, ElementName=Root}" />
+            <TextBlock Style="{StaticResource NodeDetail}" Text="{Binding TelegramDetail, ElementName=Root}"
+                       ToolTip="{Binding TelegramDetail, ElementName=Root}" />
         </StackPanel>
     </Grid>
 </UserControl>

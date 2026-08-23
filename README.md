@@ -40,6 +40,9 @@ reachable, so the bot keeps working.
   constant time), and a shared secret so the deployed worker is not an open relay.
 - 🧊 **Runs in the tray** — keeps working in the background; optional start with
   Windows and auto‑start of the bot.
+- ⬆️ **Updates itself** — checks GitHub a few seconds after launch, tells you once
+  when a new version is out, and one button downloads it, checks it against the
+  published SHA‑256, installs it and brings the app back with the relay running.
 - 🌍 **Speaks Persian** — the whole bot *and* the whole desktop, switchable from
   either side, with the window mirrored right‑to‑left.
 - 🧱 **Native & dependency‑light** — WPF on .NET 8, no third‑party NuGet packages.
@@ -75,8 +78,8 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for details.
 - A **Telegram bot** token from [@BotFather](https://t.me/BotFather)
 
 ### 0) Install
-Run **`SoulRemote-<version>-x64.msi`** and follow the wizard. It installs **for the
-current user only**, so there is no UAC prompt and no admin account needed:
+Run **`SoulRemote-<version>-Setup.exe`**. It installs **for the current user only**, so
+there is no UAC prompt and no admin account needed:
 
 | | |
 |---|---|
@@ -91,17 +94,24 @@ IDs and your language stay put through an upgrade, and through a full uninstall 
 reinstall. Settings are written to a temp file and swapped into place, so the file on
 disk is always a complete one, whatever interrupts the app.
 
+That is checked rather than assumed. `tools/check-data-survives.ps1` reads the
+package's own tables and fails if it can reach roaming `%APPDATA%` at all, and on CI
+it goes further: it installs, plants sentinel files, upgrades over the top, uninstalls,
+and compares those files byte for byte at every step.
+
 Upgrading while Soul Remote sits in the tray is fine: it closes itself when the
 installer asks, the new version goes in, and no reboot is needed.
 
 For an unattended install:
 
 ```powershell
-msiexec /i SoulRemote-1.0.0-x64.msi /qn INSTALLDESKTOPSHORTCUT=0
+SoulRemote-1.0.1-Setup.exe /quiet /norestart INSTALLDESKTOPSHORTCUT=0
 ```
 
-The plain `SoulRemote.exe` still works on its own if you would rather not install
-anything — it needs no runtime, and everything below applies unchanged.
+`SoulRemote-<version>-x64.msi` is published too, for anyone deploying with
+`msiexec` or a management tool. The plain `SoulRemote.exe` also works on its own if
+you would rather install nothing — it needs no runtime, and everything below applies
+unchanged, except that a copy no installer put there cannot replace itself.
 
 ### 1) Create a Cloudflare API token
 Cloudflare dashboard → **My Profile → API Tokens → Create Token** →
@@ -122,6 +132,24 @@ use the **“Edit Cloudflare Workers”** template → Create → copy the token
    Dashboard. The code works once, then a fresh one is issued.
 2. You're in — send `/menu`.
 
+### 4) It keeps itself up to date
+Soul Remote looks after its own updates.
+
+A few seconds after launch it asks GitHub for the latest release. If there is a newer
+one it says so **once**, in a card over the window, with the version and what changed.
+**Install now** does the rest: it downloads the setup package, checks it against the
+SHA‑256 published beside it, refuses outright if the two disagree, runs the installer,
+and starts the new version — hidden in the tray if that is where it was, and with the
+relay back up if the relay was up.
+
+If you dismiss the card it does not nag; a small badge stays in the rail until you
+want it. *Settings → Updates* has the same controls, plus two switches:
+
+| Switch | Default | What it does |
+|---|---|---|
+| Check GitHub for new versions | on | One request at launch and once a day. Nothing about your PC is sent. |
+| Install new versions on their own | off | Skips the card entirely: downloads, verifies and installs unattended. Worth turning on for a machine nobody sits at. |
+
 Full walkthrough: [`docs/SETUP.md`](docs/SETUP.md).
 
 ---
@@ -141,8 +169,8 @@ dotnet publish src/SoulRemote/SoulRemote.csproj -c Release -r win-x64 `
 
 ### The installer
 
-One command runs the tests, publishes the exe, and wraps it in the MSI, writing
-both plus their SHA-256 files to `dist/`:
+One command runs the tests, publishes the exe, wraps it in the MSI and wraps that in
+`Setup.exe`, writing all three plus their SHA-256 files to `dist/`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\build-installer.ps1 -Version 1.0.0
@@ -154,21 +182,36 @@ It needs the [WiX 5](https://wixtoolset.org) CLI once:
 dotnet tool install --global wix --version 5.0.2
 wix extension add -g WixToolset.UI.wixext/5.0.2
 wix extension add -g WixToolset.Util.wixext/5.0.2
+wix extension add -g WixToolset.BootstrapperApplications.wixext/5.0.2
 ```
 
-The installer is authored in [`installer/SoulRemote.wxs`](installer/SoulRemote.wxs).
-Its artwork — and the app's own icon — is drawn from the WPF palette by
-[`tools/make-brand.ps1`](tools/make-brand.ps1) rather than committed as binaries
-nobody can edit; `build-installer.ps1` re-runs it on every build, so the icon can
-never drift from `Resources/Palette.xaml`.
+Three files describe the packaging:
+
+| File | What it is |
+|---|---|
+| [`installer/SoulRemote.wxs`](installer/SoulRemote.wxs) | The per-user MSI: the exe, the shortcuts, and the action that restarts the app after a silent update. |
+| [`installer/Bundle.wxs`](installer/Bundle.wxs) | The Burn bundle that becomes `Setup.exe` and passes `LAUNCHAFTERINSTALL` through to the MSI. |
+| [`installer/SoulRemoteTheme.xml`](installer/SoulRemoteTheme.xml) | What `Setup.exe` looks like — the app's own palette and type, with its wording in [`SoulRemoteTheme.wxl`](installer/SoulRemoteTheme.wxl). |
+
+The artwork — the setup window's rail, and the app's own icon — is drawn from the WPF
+palette by [`tools/make-brand.ps1`](tools/make-brand.ps1) rather than committed as
+binaries nobody can edit; `build-installer.ps1` re-runs it on every build, so nothing
+can drift from `Resources/Palette.xaml`.
+
+The `.sha256` files are part of the product, not a courtesy: the in-app updater will
+not run an installer whose published checksum it cannot match, so a release without
+them is a release nobody updates to.
 
 Requires the **.NET 8 SDK**. The desktop app targets `net8.0-windows`, but
 `SoulRemote.Core` and the test suite are plain `net8.0` — so `dotnet test` runs
 anywhere, and the app itself can be built off Windows with
 `-p:EnableWindowsTargeting=true`.
 
-CI builds and tests on every push (`.github/workflows/build.yml`); pushing a
-`v*` tag publishes a release with the exe and its SHA‑256.
+CI builds and tests on every push (`.github/workflows/build.yml`). On `main` and on a
+tag it also builds the packages and runs the install/upgrade/uninstall data check on
+the runner. Pushing a `v*` tag publishes a release carrying `Setup.exe`, the MSI, the
+portable exe and a SHA‑256 for each — which is exactly the set the updater expects to
+find.
 
 ---
 
@@ -206,9 +249,8 @@ CI builds and tests on every push (`.github/workflows/build.yml`); pushing a
 می‌سازد و تمام ترافیک تلگرام را از طریق کلادفلر (که در دسترس است) عبور می‌دهد.
 
 ### نصب
-فایل **`SoulRemote-<version>-x64.msi`** را اجرا کنید و مراحل نصب را ادامه دهید.
-نصب فقط برای **کاربر فعلی** انجام می‌شود، بنابراین نه دسترسی ادمین لازم است و نه
-پنجرهٔ UAC بالا می‌آید:
+فایل **`SoulRemote-<version>-Setup.exe`** را اجرا کنید. نصب فقط برای **کاربر فعلی**
+انجام می‌شود، بنابراین نه دسترسی ادمین لازم است و نه پنجرهٔ UAC بالا می‌آید:
 
 - برنامه در `%LOCALAPPDATA%\Programs\Soul Remote` نصب می‌شود.
 - میان‌بر در منوی استارت و (در صورت تمایل) روی دسکتاپ ساخته می‌شود.
@@ -221,8 +263,30 @@ CI builds and tests on every push (`.github/workflows/build.yml`); pushing a
   نسخهٔ جدید نصب می‌شود و نیازی به ری‌استارت ویندوز نیست.
 - حذف برنامه از مسیر همیشگی ویندوز: **تنظیمات ← Apps ← Soul Remote**.
 
-اگر ترجیح می‌دهید چیزی نصب نشود، همان فایل `SoulRemote.exe` به‌تنهایی هم کار می‌کند
-و به هیچ رانتایمی نیاز ندارد.
+این‌که تنظیمات دست‌نخورده می‌ماند، فقط یک ادعا نیست: اسکریپت
+`tools/check-data-survives.ps1` جدول‌های خودِ پکیج را می‌خواند و اگر اصلاً بتواند به
+`%APPDATA%` دست بزند، شکست می‌خورد؛ روی CI هم واقعاً نصب می‌کند، فایل نشانه می‌سازد،
+روی آن ارتقا می‌دهد، حذف می‌کند و در هر مرحله فایل‌ها را بایت‌به‌بایت مقایسه می‌کند.
+
+فایل `SoulRemote-<version>-x64.msi` هم منتشر می‌شود، برای کسی که با `msiexec` یا یک
+ابزار مدیریتی نصب می‌کند. اگر ترجیح می‌دهید چیزی نصب نشود، همان `SoulRemote.exe` هم
+به‌تنهایی کار می‌کند و به هیچ رانتایمی نیاز ندارد — فقط نسخه‌ای که اینستالر آن را
+نگذاشته باشد نمی‌تواند خودش را به‌روزرسانی کند.
+
+### به‌روزرسانی
+سول ریموت خودش را به‌روز نگه می‌دارد.
+
+چند ثانیه پس از اجرا، آخرین نسخه را از گیت‌هاب می‌پرسد. اگر نسخهٔ تازه‌تری باشد،
+**یک‌بار** روی پنجره کارتی نشان می‌دهد: شمارهٔ نسخه و این‌که چه چیزی تغییر کرده. دکمهٔ
+**نصب** بقیهٔ کار را انجام می‌دهد — فایل نصب را دریافت می‌کند، آن را با SHA-256 منتشرشده
+می‌سنجد، اگر نخواند اجرایش نمی‌کند، نصب می‌کند و نسخهٔ تازه را بالا می‌آورد؛ اگر برنامه
+در سینی سیستم پنهان بود پنهان، و اگر رله روشن بود با رلهٔ روشن.
+
+اگر کارت را ببندید دیگر مزاحم نمی‌شود؛ فقط یک نشان کوچک در نوار کنار پنجره می‌ماند. در
+**Settings ← به‌روزرسانی** همین کنترل‌ها به‌علاوهٔ دو کلید هست: «بررسی نسخه‌های تازه»
+(روشن، روزی یک بار، و هیچ چیزی دربارهٔ رایانهٔ شما فرستاده نمی‌شود) و «نصب خودکار»
+(خاموش — با روشن‌کردنش کارت هم نشان داده نمی‌شود و همه‌چیز بی‌صدا انجام می‌شود، که برای
+رایانه‌ای که کسی پایش نیست گزینهٔ خوبی است).
 
 ### راه‌اندازی
 ۱. در **Cloudflare** یک **API Token** با قالب «Edit Cloudflare Workers» بسازید.

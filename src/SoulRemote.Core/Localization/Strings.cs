@@ -1,4 +1,4 @@
-namespace SoulRemote.Localization;
+﻿namespace SoulRemote.Localization;
 
 /// <summary>
 /// The whole string catalogue, in one table, with both languages on the same row.
@@ -477,6 +477,34 @@ public static class Strings
                                           "فایلی که به بات فرستاده می‌شود کجا ذخیره شود. برای Downloads\\Soul Remote خالی بگذارید."),
         ["ui.settings.english"] = ("English", "English"),
         ["ui.settings.persian"] = ("فارسی", "فارسی"),
+
+        // ================= Desktop: updates =================
+        ["ui.settings.updates"] = ("UPDATES", "به‌روزرسانی"),
+        ["ui.settings.update.auto"] = ("Check GitHub for new versions", "بررسی نسخه‌های تازه در گیت‌هاب"),
+        ["ui.settings.update.auto.hint"] = ("One request when the app starts and once a day after that. It sends nothing about this PC.",
+                                            "یک درخواست هنگام اجرای برنامه و پس از آن روزی یک بار. هیچ چیزی دربارهٔ این رایانه فرستاده نمی‌شود."),
+        ["ui.settings.update.autoinstall"] = ("Install new versions on their own", "نصب خودکار نسخه‌های تازه"),
+        ["ui.settings.update.autoinstall.hint"] = ("The installer runs in the background and Soul Remote restarts itself. Only ever applied when the published SHA-256 matches.",
+                                                   "نصب‌کننده در پس‌زمینه اجرا می‌شود و سول ریموت خودش دوباره بالا می‌آید. فقط وقتی اعمال می‌شود که SHA-256 منتشرشده بخواند."),
+        ["ui.settings.update.check"] = ("Check now", "بررسی کن"),
+        ["ui.settings.update.install"] = ("Install now", "همین حالا نصب کن"),
+        ["ui.settings.update.notes"] = ("What changed", "چه چیزی تغییر کرده"),
+        ["ui.update.eyebrow"] = ("UPDATE", "به‌روزرسانی"),
+        ["ui.update.later"] = ("Not now", "الان نه"),
+        ["ui.update.badge"] = ("Update available", "نسخهٔ تازه موجود است"),
+        ["ui.update.headline"] = ("Soul Remote {0} is out", "سول ریموت {0} منتشر شد"),
+        ["ui.update.idle"] = ("Soul Remote {0}", "سول ریموت {0}"),
+        ["ui.update.checking"] = ("Looking for a newer version…", "در حال جست‌وجوی نسخهٔ تازه‌تر…"),
+        ["ui.update.uptodate"] = ("Soul Remote {0} is the newest version.", "سول ریموت {0} تازه‌ترین نسخه است."),
+        ["ui.update.available"] = ("Version {0} is out.", "نسخهٔ {0} منتشر شده است."),
+        ["ui.update.downloading"] = ("Downloading {0} — {1}%", "در حال دریافت {0} — {1}%"),
+        ["ui.update.ready"] = ("Version {0} is downloaded and verified.", "نسخهٔ {0} دریافت و بررسی شد."),
+        ["ui.update.installing"] = ("Installing {0}. Soul Remote will close and come back on its own.",
+                                    "در حال نصب {0}. سول ریموت بسته می‌شود و خودش برمی‌گردد."),
+        ["ui.update.failed"] = ("Update: {0}", "به‌روزرسانی: {0}"),
+        ["ui.update.portable"] = ("This copy was not put here by the installer, so it cannot replace itself. Download the new version from the release page.",
+                                  "این نسخه را نصب‌کننده اینجا نگذاشته است، پس نمی‌تواند خودش را جایگزین کند. نسخهٔ تازه را از صفحهٔ انتشار دریافت کنید."),
+        ["ui.update.restarted"] = ("Updated to {0}.", "به {0} به‌روزرسانی شد."),
 
         // ================= Desktop: activity log =================
         ["ui.logs.title"] = ("Activity", "فعالیت"),

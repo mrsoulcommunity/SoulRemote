@@ -1,4 +1,4 @@
-<!--
+﻿<!--
     Soul Remote — control library.
 
     Every interactive control is templated here so the app has one consistent
@@ -490,6 +490,146 @@
                             <Setter TargetName="Bd" Property="Background" Value="{StaticResource SignalWashBrush}" />
                             <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource SignalBrush}" />
                             <Setter Property="Foreground" Value="{StaticResource SignalBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================================================
+         Progress
+         ============================================================ -->
+    <!--
+        The conduit bar. Determinate while a download runs, and a travelling pulse
+        while something has no percentage to report — a check, a verify, an installer
+        that has already been handed over. The pulse uses the same relay-to-signal
+        gradient as the dashboard relay line, so "work is moving" looks the same
+        wherever it appears.
+    -->
+    <Style x:Key="ConduitProgress" TargetType="ProgressBar">
+        <Setter Property="Height" Value="6" />
+        <Setter Property="Foreground" Value="{StaticResource ConduitBrush}" />
+        <Setter Property="Background" Value="{StaticResource LineSoftBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ProgressBar">
+                    <Grid ClipToBounds="True" SnapsToDevicePixels="True">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="3" />
+                        <!-- Both parts are sized by ProgressBar itself and must keep these names. -->
+                        <Grid x:Name="PART_Track" />
+                        <Border x:Name="PART_Indicator" HorizontalAlignment="Left"
+                                Background="{TemplateBinding Foreground}" CornerRadius="3" />
+                        <Border x:Name="Pulse" Width="120" HorizontalAlignment="Left" Opacity="0.9"
+                                Background="{TemplateBinding Foreground}" CornerRadius="3"
+                                Visibility="Collapsed">
+                            <Border.RenderTransform>
+                                <TranslateTransform x:Name="PulseShift" X="-120" />
+                            </Border.RenderTransform>
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsIndeterminate" Value="True">
+                            <Setter TargetName="PART_Indicator" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="Pulse" Property="Visibility" Value="Visible" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard x:Name="PulseLoop">
+                                    <Storyboard RepeatBehavior="Forever">
+                                        <DoubleAnimation Storyboard.TargetName="PulseShift"
+                                                         Storyboard.TargetProperty="X"
+                                                         From="-120" To="640" Duration="0:0:1.5" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <StopStoryboard BeginStoryboardName="PulseLoop" />
+                            </Trigger.ExitActions>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================================================
+         Text actions
+         ============================================================ -->
+    <!-- A button that reads as a link, for the action that leaves the app. -->
+    <Style x:Key="LinkButton" TargetType="Button">
+        <Setter Property="Foreground" Value="{StaticResource SignalBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+        <Setter Property="FontSize" Value="{StaticResource SizeBody}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Padding" Value="2,6" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" Background="Transparent" Padding="{TemplateBinding Padding}"
+                            BorderThickness="0,0,0,1" BorderBrush="Transparent">
+                        <ContentPresenter VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource SignalBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource InkBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.7" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource InkFaintBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!--
+        The update pill in the rail. It is the only relay-coloured control in the app,
+        which is the point: nothing else competes with it, and it disappears the moment
+        there is nothing to update to.
+    -->
+    <Style x:Key="UpdatePill" TargetType="Button">
+        <Setter Property="Foreground" Value="{StaticResource RelayBrush}" />
+        <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Height" Value="26" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <!--
+                        CornerRadius is exactly half the height above, which is the only
+                        value that gives a true lozenge. The usual shorthand of a huge
+                        number does not work here: WPF clamps each corner on its own and
+                        leaves the two ends flattened and clipped.
+                    -->
+                    <Border x:Name="Bd" Background="{StaticResource RelayWashBrush}" CornerRadius="13"
+                            BorderBrush="{StaticResource RelayBrush}" BorderThickness="1"
+                            Padding="12,0" SnapsToDevicePixels="True">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse Width="6" Height="6" VerticalAlignment="Center"
+                                     Fill="{StaticResource RelayBrush}" />
+                            <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.82" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource InkBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.65" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

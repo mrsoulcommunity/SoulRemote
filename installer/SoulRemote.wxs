@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!--
   Soul Remote's installer.
 
@@ -132,6 +132,15 @@
     -->
     <Property Id="INSTALLDESKTOPSHORTCUT" Value="1" Secure="yes" />
 
+    <!--
+      Set to 1 by whoever is driving the install without a UI - which in practice means
+      Soul Remote updating itself. The app closes so its own exe can be replaced, and
+      nothing else would ever start the new one; the custom action below does.
+      Deliberately not the same thing as the tick on the exit dialog, which only exists
+      when there is an exit dialog to tick.
+    -->
+    <Property Id="LAUNCHAFTERINSTALL" Secure="yes" />
+
     <!-- The tick on the final page; clearing it leaves the machine untouched. -->
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch Soul Remote" />
@@ -144,6 +153,21 @@
                   BinaryRef="Wix4UtilCA_X64"
                   DllEntry="WixShellExec"
                   Impersonate="yes" />
+
+    <!--
+      The same shell execute, sequenced rather than published from a dialog, so that it
+      also runs under /qn and /passive. After InstallFinalize, because the file it starts
+      has to exist first, and never on a removal.
+    -->
+    <CustomAction Id="LaunchAfterSilentInstall"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixShellExec"
+                  Impersonate="yes" />
+
+    <InstallExecuteSequence>
+      <Custom Action="LaunchAfterSilentInstall" After="InstallFinalize"
+              Condition="LAUNCHAFTERINSTALL = &quot;1&quot; AND NOT REMOVE" />
+    </InstallExecuteSequence>
 
     <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
     <WixVariable Id="WixUIBannerBmp" Value="banner.bmp" />

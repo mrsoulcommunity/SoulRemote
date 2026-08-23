@@ -1,4 +1,4 @@
-<Window x:Class="SoulRemote.MainWindow"
+﻿<Window x:Class="SoulRemote.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:SoulRemote.ViewModels"
@@ -23,6 +23,7 @@
         <vm:LinkStateToBrushConverter x:Key="StateBrush" />
         <vm:EqualsConverter x:Key="Equals" />
         <vm:TextToVisibilityConverter x:Key="HasText" />
+        <vm:BoolToVisibilityConverter x:Key="BoolVis" />
 
         <!--
             Maximise and restore are the same button, and with CaptionHeight="0" there
@@ -125,6 +126,17 @@
                                        Margin="0,8,0,0" TextWrapping="Wrap"
                                        Foreground="{StaticResource SignalBrush}"
                                        Visibility="{Binding QuickResult, Converter={StaticResource HasText}}" />
+
+                            <!--
+                                The one badge in the app. It appears only when there is a
+                                newer version, and brings the card back after "Not now",
+                                so dismissing the offer never means losing it.
+                            -->
+                            <Button Style="{StaticResource UpdatePill}" Margin="0,12,0,0"
+                                    HorizontalAlignment="Left"
+                                    Content="{p:T ui.update.badge}"
+                                    Command="{Binding Update.ReopenCommand}"
+                                    Visibility="{Binding Update.HasUpdate, Converter={StaticResource BoolVis}}" />
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -158,6 +170,16 @@
 
                 <ContentControl Grid.Row="1" Content="{Binding Current}" />
             </Grid>
+
+            <!--
+                The update card, over everything including the rail. It is the only modal
+                in the app, so it is deliberately built the same way a modal should be:
+                a scrim that takes the clicks, one card, and Escape to leave.
+            -->
+            <Border Grid.Column="0" Grid.ColumnSpan="2" Background="#E6070A11"
+                    Visibility="{Binding Update.IsCardOpen, Converter={StaticResource BoolVis}}">
+                <views:UpdateCard DataContext="{Binding Update}" />
+            </Border>
         </Grid>
     </Border>
 </Window>

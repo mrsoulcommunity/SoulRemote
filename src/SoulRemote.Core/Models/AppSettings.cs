@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using SoulRemote.Localization;
 
 namespace SoulRemote.Models;
@@ -80,6 +80,21 @@ public sealed class AppSettings
     /// <summary>UI and bot language, stored as a two-letter tag ("en" / "fa").</summary>
     public string Language { get; set; } = "en";
 
+    /// <summary>
+    /// Look for a newer release on GitHub at startup and once a day after that. The
+    /// check is one unauthenticated request and sends nothing about this machine.
+    /// </summary>
+    public bool AutoCheckUpdates { get; set; } = true;
+
+    /// <summary>
+    /// Download and apply a newer release without asking first. Off by default: being
+    /// told what is about to happen, once, and pressing one button is the flow this app
+    /// is built around. Turning it on suits a machine nobody signs in to. Either way the
+    /// installer is only ever run when its published SHA-256 matched, and only against a
+    /// copy that an installer put there in the first place.
+    /// </summary>
+    public bool AutoInstallUpdates { get; set; } = false;
+
     /// <summary>Log files older than this are deleted at startup. 0 keeps them forever.</summary>
     public int LogRetentionDays { get; set; } = 14;
 
@@ -147,6 +162,8 @@ public sealed class AppSettings
             PollTimeoutSeconds = PollTimeoutSeconds,
             ReduceMotion = ReduceMotion,
             Language = Language,
+            AutoCheckUpdates = AutoCheckUpdates,
+            AutoInstallUpdates = AutoInstallUpdates,
             LogRetentionDays = LogRetentionDays,
             DownloadFolder = DownloadFolder,
         };

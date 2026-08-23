@@ -1,3 +1,4 @@
+﻿using System.Reflection;
 using SoulRemote.Abstractions;
 using SoulRemote.Localization;
 using SoulRemote.Platform;
@@ -22,6 +23,9 @@ public sealed class AppServices
     public IScreenshotService Screenshot { get; }
     public ISystemInfoService Info { get; }
     public IStartupManager Startup { get; }
+    public IAppUpdateService Updates { get; }
+    public IUpdateInstaller Installer { get; }
+    public UpdateCoordinator UpdateCoordinator { get; }
     public CommandRouter Router { get; }
     public BotEngine Bot { get; }
     public ConnectionOrchestrator Orchestrator { get; }
@@ -47,6 +51,12 @@ public sealed class AppServices
         Screenshot = new ScreenshotService();
         Info = new SystemInfoService(Log, Settings, Cloudflare);
         Startup = new StartupManager(Log);
+
+        // The updater is given the assembly version rather than a constant, so the
+        // number it compares against GitHub is the one the build actually stamped.
+        Updates = new AppUpdateService(Log, Assembly.GetExecutingAssembly().GetName().Version);
+        Installer = new UpdateInstaller(Log);
+        UpdateCoordinator = new UpdateCoordinator(Updates, Installer, Settings, Log);
 
         Router = new CommandRouter(Settings, Telegram, System, Screenshot, Info, Log);
         Bot = new BotEngine(Settings, Telegram, Router, Log);

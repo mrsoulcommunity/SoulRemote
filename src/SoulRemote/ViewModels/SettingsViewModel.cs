@@ -1,4 +1,4 @@
-using SoulRemote.Localization;
+﻿using SoulRemote.Localization;
 using SoulRemote.Services;
 
 namespace SoulRemote.ViewModels;
@@ -12,9 +12,15 @@ public sealed class SettingsViewModel : ViewModelBase
     private readonly AppServices _services;
     private bool _loading;
 
-    public SettingsViewModel(AppServices services)
+    /// <param name="update">
+    /// Shared with the shell rather than built here: the same object drives the card
+    /// that appears over the app, and two of them would disagree about what stage the
+    /// download had reached.
+    /// </param>
+    public SettingsViewModel(AppServices services, UpdateViewModel update)
     {
         _services = services;
+        Update = update;
         Load();
         OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
         OpenSettingsFileCommand = new RelayCommand(OpenSettingsFolder);
@@ -46,6 +52,9 @@ public sealed class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsEnglish));
         OnPropertyChanged(nameof(IsPersian));
     }
+
+    /// <summary>The updater, shown as a card on this page and as a modal from the shell.</summary>
+    public UpdateViewModel Update { get; }
 
     public bool IsEnglish => Strings.Current == AppLanguage.English;
     public bool IsPersian => Strings.Current == AppLanguage.Persian;

@@ -1,4 +1,4 @@
-namespace SoulRemote.Services;
+﻿namespace SoulRemote.Services;
 
 /// <summary>
 /// Everything the bot can do to the machine it runs on. The implementation is
@@ -76,4 +76,30 @@ public interface IStartupManager
 {
     bool IsEnabled();
     void SetEnabled(bool enabled);
+}
+
+/// <summary>
+/// Applies a downloaded release to this machine. The core finds and verifies the
+/// installer; running it means replacing the executable this process is running from,
+/// which only Windows can do, so it happens behind this.
+/// </summary>
+public interface IUpdateInstaller
+{
+    /// <summary>The folder the installer manages, or null when this copy did not come from one.</summary>
+    string? InstallFolder { get; }
+
+    /// <summary>
+    /// Whether an update may be applied to this copy. False for the portable exe run
+    /// straight out of a downloads folder: an installer would put a second copy under
+    /// %LOCALAPPDATA% and leave the one the user actually launched sitting there,
+    /// permanently out of date and still the one they open.
+    /// </summary>
+    bool CanReplaceItself { get; }
+
+    /// <summary>
+    /// Hands the installer to Windows and returns once it has started. The caller is
+    /// expected to close the app immediately afterwards: an installer cannot replace an
+    /// executable that is still running.
+    /// </summary>
+    bool Start(string installerPath, bool silent);
 }

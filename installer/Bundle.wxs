@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Soul Remote — SoulRemote-<version>-Setup.exe.
+
+    A Burn bundle wrapped round the per-user MSI. The MSI on its own is a perfectly
+    good package, and it stays published, but a bundle is what makes the rest of this
+    work:
+
+      * One file called Setup.exe, which is what people expect to double-click, and
+        what a browser will let them keep without arguing about it.
+      * A UI that belongs to this app rather than to Windows Installer 1999. See
+        SoulRemoteTheme.xml.
+      * A silent mode the app can drive itself. The updater runs
+            SoulRemote-1.0.2-Setup.exe /quiet /norestart LAUNCHAFTERINSTALL=1
+        and the bundle passes that property through to the MSI, which starts the newly
+        installed exe once it is finished. That single line is the whole difference
+        between an app that updates itself and one that tells you to go and do it.
+
+    It stays per-user, like the MSI it carries: nothing here needs elevation, and a
+    UAC prompt in front of an audience who receive this over Telegram is a wall.
+
+    Built by tools/build-installer.ps1, after the MSI it chains.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+
+  <?ifndef Version?>
+  <?define Version = "1.0.0" ?>
+  <?endif?>
+  <?ifndef MsiFile?>
+  <?define MsiFile = "..\dist\SoulRemote-$(Version)-x64.msi" ?>
+  <?endif?>
+  <?ifndef IconFile?>
+  <?define IconFile = "..\src\SoulRemote\Assets\app.ico" ?>
+  <?endif?>
+
+  <Bundle Name="Soul Remote"
+          Manufacturer="MrSoul"
+          Version="$(Version)"
+          IconSourceFile="$(IconFile)"
+          AboutUrl="https://github.com/mrsoulcommunity/SoulRemote"
+          Compressed="yes"
+          UpgradeCode="9B4F2E67-24C8-4C0D-9C2E-63B1F4A70D18">
+
+    <!--
+      Its own upgrade code, distinct from the MSI. The bundle tracks bundles; the MSI
+      inside it tracks MSIs. Sharing one would make each of them think the other was
+      an older version of itself.
+    -->
+
+    <!--
+      The licence is linked rather than embedded. Burn only renders a licence inside the
+      window through its RTF theme, which draws it into a plain white rich-edit box - on
+      a dark theme that is a hole in the middle of the page, and it is the one control
+      here that cannot be restyled. A link to the file in the repository stays readable,
+      stays current, and keeps the tick box that goes with it.
+    -->
+    <BootstrapperApplication>
+      <!--
+        The sidebar variant, because that is the one whose payload carries logoside.png.
+        ThemeFile then replaces the layout wholesale, but the choice above still decides
+        which files reach the bootstrapper - pick a non-sidebar theme and setup.exe fails
+        to open, with nothing to show for it but a line in the log.
+      -->
+      <bal:WixStandardBootstrapperApplication
+          Theme="hyperlinkSidebarLicense"
+          ThemeFile="SoulRemoteTheme.xml"
+          LocalizationFile="SoulRemoteTheme.wxl"
+          LicenseUrl="https://github.com/mrsoulcommunity/SoulRemote/blob/main/LICENSE"
+          LogoFile="logo.png"
+          LogoSideFile="logoside.png"
+          SuppressOptionsUI="yes"
+          ShowVersion="yes" />
+    </BootstrapperApplication>
+
+    <!--
+      Overridable so the app can pass them on its own command line when it updates
+      itself. Everything else about the install is fixed on purpose: an unattended
+      upgrade is not the moment to be re-answering setup questions.
+    -->
+    <Variable Name="LAUNCHAFTERINSTALL" Value="0" Type="string" bal:Overridable="yes" />
+    <Variable Name="INSTALLDESKTOPSHORTCUT" Value="1" Type="string" bal:Overridable="yes" />
+
+    <!--
+      Gives the success page its Open button. The MSI installs to this folder unless
+      somebody typed a different one on the Options page, which this build hides.
+    -->
+    <Variable Name="LaunchTarget" Value="[LocalAppDataFolder]Programs\Soul Remote\SoulRemote.exe" />
+
+    <Chain>
+      <!--
+        Vital, and the only package: if the MSI fails there is nothing else to do, and
+        Burn should report the failure rather than claim a partial success.
+      -->
+      <MsiPackage Id="SoulRemoteMsi"
+                  SourceFile="$(MsiFile)"
+                  Vital="yes"
+                  Compressed="yes"
+                  ForcePerMachine="no">
+        <MsiProperty Name="LAUNCHAFTERINSTALL" Value="[LAUNCHAFTERINSTALL]" />
+        <MsiProperty Name="INSTALLDESKTOPSHORTCUT" Value="[INSTALLDESKTOPSHORTCUT]" />
+      </MsiPackage>
+    </Chain>
+
+  </Bundle>
+</Wix>

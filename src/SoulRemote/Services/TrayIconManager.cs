@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Drawing;
 using System.Windows;
 using System.Windows.Forms;
@@ -171,6 +171,24 @@ public sealed class TrayIconManager : IDisposable
     /// this first, or the close is quietly cancelled and the process stays alive.
     /// </summary>
     public void BeginExit() => _exiting = true;
+
+    /// <summary>
+    /// A balloon from the tray. Used when something worth knowing happens while the
+    /// window is hidden - a new version, for one - because a card behind a hidden window
+    /// tells nobody anything. Clicking the balloon brings the window up, so the offer is
+    /// one click away rather than buried in a menu.
+    /// </summary>
+    public void Notify(string title, string message)
+    {
+        void OnClicked(object? sender, EventArgs e)
+        {
+            _notifyIcon.BalloonTipClicked -= OnClicked;
+            ShowWindow();
+        }
+
+        _notifyIcon.BalloonTipClicked += OnClicked;
+        _notifyIcon.ShowBalloonTip(6000, title, message, ToolTipIcon.Info);
+    }
 
     public void Dispose()
     {

@@ -5,7 +5,7 @@ Telegram bot, and linking your first chat.
 
 ## 0. Install Soul Remote
 
-Run `SoulRemote-<version>-x64.msi`. It installs for the current user only — no
+Run `SoulRemote-<version>-Setup.exe`. It installs for the current user only — no
 admin rights, no UAC prompt — into `%LOCALAPPDATA%\Programs\Soul Remote`, and adds
 a Start-menu shortcut (plus a desktop one, unless you clear the option).
 
@@ -14,8 +14,29 @@ not owned by the installer, so upgrading — or uninstalling and installing agai
 never touches your tokens or paired chats. If the app is running in the tray when you
 upgrade, it closes itself so the new version can go in without a reboot.
 
+`SoulRemote-<version>-x64.msi` is published alongside it for anyone deploying with
+`msiexec` or a management tool. Both are silent-capable:
+
+```powershell
+SoulRemote-1.0.1-Setup.exe /quiet /norestart INSTALLDESKTOPSHORTCUT=0
+msiexec /i SoulRemote-1.0.1-x64.msi /qn INSTALLDESKTOPSHORTCUT=0
+```
+
 If you would rather not install anything, `SoulRemote.exe` runs on its own from
-wherever you put it; the rest of this guide is identical either way.
+wherever you put it; the rest of this guide is identical either way, except that a
+copy no installer put there cannot update itself.
+
+## 0.1 Updates, after that
+
+Soul Remote checks GitHub for a newer release a few seconds after it starts, and once
+a day while it runs. When there is one it shows a card with the version and the release
+notes; **Install now** downloads the setup package, checks it against the SHA-256
+published beside it, installs it and starts the new version — back in the tray if that
+is where it was, and with the relay running if the relay was running.
+
+It refuses to install anything whose published checksum does not match what arrived, and
+it refuses to install over a copy an installer did not put there. Both switches live in
+**Settings → Updates**: whether to check at all, and whether to install without asking.
 
 ## 1. Create a Telegram bot
 

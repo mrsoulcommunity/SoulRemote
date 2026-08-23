@@ -51,6 +51,7 @@ src/SoulRemote.Core/            everything that does not need Windows
     FileBrowser.cs              folder listing, fetching, and receiving files
     RateLimiter.cs              per-chat sliding window
     LogService.cs               in-memory + rolling file log with retention
+    AppUpdateService.cs         GitHub releases: version compare, download, SHA-256
 
 src/SoulRemote/                 the Windows half
   App.xaml(.cs)                 bootstrap, single-instance, tray, global error handling
@@ -58,6 +59,8 @@ src/SoulRemote/                 the Windows half
   MainWindow.xaml(.cs)          shell: custom chrome + navigation rail + page host
   Platform/                     WpfDispatcher, DpapiSecretProtector, the {p:T} markup
                                 extension, and the PasswordBox binding helper
+  Services/UpdateInstaller.cs   starts a downloaded package and steps out of its way
+  Services/UpdateCoordinator.cs when to check, when to apply, what to restore after
   Resources/                    Palette / Typography / Controls
   Controls/RelayLine.xaml(.cs)  the signature control: live view of the three hops
   Services/                     SystemControl, SystemInfo, Screenshot, Startup, Tray

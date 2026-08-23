@@ -1,4 +1,4 @@
-<UserControl x:Class="SoulRemote.Views.SettingsView"
+﻿<UserControl x:Class="SoulRemote.Views.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:SoulRemote.ViewModels"
@@ -6,6 +6,7 @@
 
     <UserControl.Resources>
         <vm:TextToVisibilityConverter x:Key="HasText" />
+        <vm:BoolToVisibilityConverter x:Key="BoolVis" />
 
         <Style x:Key="OptionHint" TargetType="TextBlock" BasedOn="{StaticResource BodyDim}">
             <Setter Property="FontSize" Value="12" />
@@ -117,6 +118,63 @@
                              Text="{Binding LogRetentionDays, UpdateSourceTrigger=LostFocus}" />
                     <TextBlock Style="{StaticResource BodyDim}" Margin="0,8,0,0" FontSize="12"
                                Text="{p:T ui.settings.logretention.hint}" />
+                </StackPanel>
+            </Border>
+
+            <!-- ===== Updates =====
+                 The same view model the shell shows as a card. Here it is the quiet
+                 version: what version is running, one button to look now, and the two
+                 switches that decide whether it ever looks or installs on its own. -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="{p:T ui.settings.updates}" Style="{StaticResource Eyebrow}" />
+
+                    <Grid Margin="0,14,0,0">
+                        <TextBlock Text="{Binding Update.Status}"
+                                   VerticalAlignment="Center" Margin="0,0,120,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource Body}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Update.HasFault}" Value="True">
+                                            <Setter Property="Foreground" Value="{StaticResource FaultBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <Button Style="{StaticResource GhostButton}" Content="{p:T ui.settings.update.check}"
+                                HorizontalAlignment="Right" VerticalAlignment="Center"
+                                Command="{Binding Update.CheckCommand}" />
+                    </Grid>
+
+                    <ProgressBar Style="{StaticResource ConduitProgress}" Margin="0,14,0,0"
+                                 Minimum="0" Maximum="100"
+                                 Value="{Binding Update.Percent, Mode=OneWay}"
+                                 IsIndeterminate="{Binding Update.ProgressIsIndeterminate}"
+                                 Visibility="{Binding Update.ShowProgress, Converter={StaticResource BoolVis}}" />
+
+                    <StackPanel Margin="0,18,0,0">
+                        <CheckBox Style="{StaticResource ToggleSwitch}" Content="{p:T ui.settings.update.auto}"
+                                  IsChecked="{Binding Update.AutoCheck}" />
+                        <TextBlock Style="{StaticResource OptionHint}" Text="{p:T ui.settings.update.auto.hint}" />
+
+                        <CheckBox Style="{StaticResource ToggleSwitch}" Content="{p:T ui.settings.update.autoinstall}"
+                                  IsChecked="{Binding Update.AutoInstall}" />
+                        <TextBlock Style="{StaticResource OptionHint}" Text="{p:T ui.settings.update.autoinstall.hint}" />
+                    </StackPanel>
+
+                    <TextBlock Text="{p:T ui.update.portable}" Style="{StaticResource BodyDim}" FontSize="12"
+                               Margin="0,4,0,0"
+                               Visibility="{Binding Update.IsPortableCopy, Converter={StaticResource BoolVis}}" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <Button Style="{StaticResource PrimaryButton}" Content="{p:T ui.settings.update.install}"
+                                Command="{Binding Update.UpdateNowCommand}" Margin="0,0,10,0"
+                                Visibility="{Binding Update.CanUpdateNow, Converter={StaticResource BoolVis}}" />
+                        <Button Style="{StaticResource LinkButton}" Content="{p:T ui.settings.update.notes}"
+                                Command="{Binding Update.OpenReleaseCommand}"
+                                Visibility="{Binding Update.HasReleasePage, Converter={StaticResource BoolVis}}" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

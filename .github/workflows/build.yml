@@ -18,6 +18,12 @@ jobs:
   build:
     runs-on: windows-latest
 
+    # Only the release step needs more than read access, and it needs exactly this:
+    # a repository whose default token is read-only fails at the last step of a tag
+    # build, after twenty minutes of work, with nothing published.
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -96,6 +102,48 @@ jobs:
           "$hash  SoulRemote.exe" | Out-File -Encoding ascii publish/SoulRemote.exe.sha256
           Write-Host "SHA-256: $hash"
 
+
+      # Packaging costs a couple of minutes on a Windows runner, so it runs where it
+      # earns that: on main, on a tag, and on demand. A pull request still gets the
+      # build, the tests and the two static checks above.
+      - name: Install WiX
+        if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add -g WixToolset.UI.wixext/5.0.2
+          wix extension add -g WixToolset.Util.wixext/5.0.2
+          wix extension add -g WixToolset.BootstrapperApplications.wixext/5.0.2
+
+      # -PackageOnly reuses the exe published above. The packages a release ships are
+      # therefore built by the same script a developer runs, rather than by a second
+      # copy of the recipe living in this file and drifting away from it.
+      - name: Package (MSI and setup.exe)
+        if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+        shell: powershell
+        run: .\tools\build-installer.ps1 -Version ${{ steps.version.outputs.value }} -PackageOnly
+
+      # The one guarantee people actually rely on: an upgrade must not touch the
+      # settings, tokens and paired chats under %APPDATA%. -Install installs the
+      # package, plants sentinel files, upgrades over the top and uninstalls, checking
+      # the sentinels byte for byte at each step. It needs a machine nobody minds it
+      # installing on, which is exactly what a runner is.
+      - name: Check that user data survives an upgrade
+        if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+        shell: powershell
+        run: .\tools\check-data-survives.ps1 -Install
+
+      - name: Upload installers
+        if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoulRemote-installers
+          path: |
+            dist/*.msi
+            dist/*.msi.sha256
+            dist/*Setup.exe
+            dist/*Setup.exe.sha256
+          if-no-files-found: error
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -105,13 +153,22 @@ jobs:
             publish/SoulRemote.exe.sha256
           if-no-files-found: error
 
-      # A tag turns the same artefact into something anyone can download without a
+      # A tag turns the same artefacts into something anyone can download without a
       # GitHub account, and that does not expire after ninety days.
+      #
+      # The .sha256 files are not decoration here. The app updates itself from this
+      # release, and it refuses to run an installer whose published checksum it cannot
+      # match - so a release published without them is a release nobody updates to.
+      # SoulRemote-<version>-Setup.exe is the asset the updater looks for first.
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            dist/SoulRemote-*-Setup.exe
+            dist/SoulRemote-*-Setup.exe.sha256
+            dist/SoulRemote-*-x64.msi
+            dist/SoulRemote-*-x64.msi.sha256
             publish/SoulRemote.exe
             publish/SoulRemote.exe.sha256
           generate_release_notes: true

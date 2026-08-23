@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Every string setup.exe shows. It replaces WiX's own wording rather than adding to
+    it, so the installer explains this particular app: where it goes, why nothing is
+    asked of Windows, and what happens to settings on an upgrade — which is the one
+    question anyone reinstalling actually has.
+-->
+<WixLocalization Culture="en-us" Language="1033" xmlns="http://wixtoolset.org/schemas/v4/wxl">
+
+  <String Id="Caption" Value="[WixBundleName] Setup" />
+  <String Id="Title" Value="[WixBundleName]" />
+
+  <String Id="CheckingForUpdatesLabel" Value="Checking for updates…" />
+  <String Id="UpdateButton" Value="&amp;Update to version [WixStdBAUpdateAvailable]" />
+
+  <String Id="InstallHeader" Value="Install Soul Remote" />
+  <String Id="InstallMessage" Value="Control this PC from Telegram. Click Install to continue." />
+  <String Id="InstallMessageOptions" Value="Control this PC from Telegram. Click Install to continue, or Options to choose where it goes." />
+  <String Id="InstallDetail" Value="Installs under your own profile, so Windows asks for no administrator approval.&#xA;&#xA;Settings, paired chats and logs live in %APPDATA%\Soul Remote. Nothing here touches them - not an install, not an upgrade, not an uninstall." />
+  <String Id="InstallVersion" Value="Version [WixBundleVersion]" />
+  <!-- The whole line is the link. Windows draws link text in its own colour and the
+       words either side of it in another, and the two do not match. -->
+  <String Id="InstallLicenseLinkText" Value="&lt;a href=&quot;#&quot;&gt;Read the licence terms&lt;/a&gt;" />
+  <String Id="InstallAcceptCheckbox" Value="I &amp;agree to the licence terms" />
+  <String Id="InstallOptionsButton" Value="&amp;Options" />
+  <String Id="InstallInstallButton" Value="&amp;Install" />
+  <String Id="InstallCancelButton" Value="&amp;Cancel" />
+
+  <String Id="ConfirmCancelMessage" Value="Stop the installation?" />
+  <String Id="ExecuteUpgradeRelatedBundleMessage" Value="Removing the previous version" />
+
+  <String Id="OptionsHeader" Value="Where it goes" />
+  <String Id="OptionsLocationLabel" Value="Install folder" />
+  <String Id="OptionsBrowseButton" Value="&amp;Browse" />
+  <String Id="OptionsDetail" Value="The default is inside your own profile, which is what keeps this install free of administrator prompts. A folder outside it may need them." />
+  <String Id="OptionsOkButton" Value="&amp;OK" />
+  <String Id="OptionsCancelButton" Value="&amp;Cancel" />
+
+  <String Id="ProgressHeader" Value="Installing" />
+  <String Id="ProgressDetail" Value="Soul Remote is self-contained: nothing else has to be downloaded or installed alongside it." />
+  <String Id="ProgressLabel" Value="Working on:" />
+  <String Id="OverallProgressPackageText" Value="Starting…" />
+  <String Id="ProgressCancelButton" Value="&amp;Cancel" />
+
+  <String Id="ModifyHeader" Value="Soul Remote is installed" />
+  <String Id="ModifyDetail" Value="Repair reinstalls the same version over itself. Uninstall removes the app and leaves your settings and paired chats in %APPDATA% untouched." />
+  <String Id="ModifyRepairButton" Value="&amp;Repair" />
+  <String Id="ModifyUninstallButton" Value="&amp;Uninstall" />
+  <String Id="ModifyCancelButton" Value="&amp;Close" />
+
+  <String Id="SuccessHeader" Value="Done" />
+  <String Id="SuccessCacheHeader" Value="Done" />
+  <String Id="SuccessInstallHeader" Value="Soul Remote is installed" />
+  <String Id="SuccessLayoutHeader" Value="Copy created" />
+  <String Id="SuccessModifyHeader" Value="Changes applied" />
+  <String Id="SuccessRepairHeader" Value="Soul Remote is repaired" />
+  <String Id="SuccessUninstallHeader" Value="Soul Remote is removed" />
+  <String Id="SuccessUnsafeUninstallHeader" Value="Soul Remote is removed" />
+  <String Id="SuccessDetail" Value="It is in your Start menu, and it keeps running in the notification area once you close the window.&#xA;&#xA;From here it updates itself: it looks for new releases on GitHub, tells you when one is out, and installs it on one click." />
+  <String Id="SuccessLaunchButton" Value="&amp;Open" />
+  <String Id="SuccessRestartText" Value="Restart your PC to finish." />
+  <String Id="SuccessUninstallRestartText" Value="Restart your PC to finish removing it." />
+  <String Id="SuccessRestartButton" Value="&amp;Restart" />
+  <String Id="SuccessCloseButton" Value="&amp;Close" />
+
+  <String Id="FailureHeader" Value="Setup did not finish" />
+  <String Id="FailureCacheHeader" Value="Setup did not finish" />
+  <String Id="FailureInstallHeader" Value="Setup did not finish" />
+  <String Id="FailureLayoutHeader" Value="The copy was not created" />
+  <String Id="FailureModifyHeader" Value="The changes were not applied" />
+  <String Id="FailureRepairHeader" Value="The repair did not finish" />
+  <String Id="FailureUninstallHeader" Value="Soul Remote was not removed" />
+  <String Id="FailureUnsafeUninstallHeader" Value="Soul Remote was not removed" />
+  <String Id="FailureHyperlinkLogText" Value="Nothing was left half-installed — Windows undid the changes. The &lt;a href=&quot;#&quot;&gt;setup log&lt;/a&gt; says why." />
+  <String Id="FailureRestartText" Value="Restart your PC to finish undoing the changes." />
+  <String Id="FailureRestartButton" Value="&amp;Restart" />
+  <String Id="FailureCloseButton" Value="&amp;Close" />
+
+  <String Id="FilesInUseTitle" Value="Soul Remote is running" />
+  <String Id="FilesInUseLabel" Value="It has to close before it can be replaced:" />
+  <String Id="FilesInUseNetfxCloseRadioButton" Value="Close it." />
+  <String Id="FilesInUseCloseRadioButton" Value="Close it and start it again afterwards." />
+  <String Id="FilesInUseDontCloseRadioButton" Value="&amp;Leave it running. The PC will have to restart." />
+  <String Id="FilesInUseRetryButton" Value="&amp;Retry" />
+  <String Id="FilesInUseIgnoreButton" Value="&amp;Ignore" />
+  <String Id="FilesInUseExitButton" Value="E&amp;xit" />
+
+  <String Id="HelpHeader" Value="Command line" />
+  <String Id="HelpText" Value="/install | /repair | /uninstall | /layout [folder]&#xA;   What to do. Install is the default.&#xA;&#xA;/passive | /quiet&#xA;   Progress only, or nothing at all. Both skip every prompt.&#xA;&#xA;/norestart&#xA;   Never restart the PC.&#xA;&#xA;/log file.txt&#xA;   Where to write the setup log. Defaults to %TEMP%.&#xA;&#xA;INSTALLDESKTOPSHORTCUT=0&#xA;   Skip the desktop shortcut.&#xA;&#xA;LAUNCHAFTERINSTALL=1&#xA;   Start Soul Remote when setup finishes. This is what the app itself&#xA;   passes when it updates in the background." />
+  <String Id="HelpCloseButton" Value="&amp;Close" />
+
+</WixLocalization>

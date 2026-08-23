@@ -31,6 +31,7 @@ VIEW_CONTEXT = {
     'src/SoulRemote/Views/ConnectView.xaml': 'ConnectViewModel',
     'src/SoulRemote/Views/SettingsView.xaml': 'SettingsViewModel',
     'src/SoulRemote/Views/LogView.xaml': 'LogViewModel',
+    'src/SoulRemote/Views/UpdateCard.xaml': 'UpdateViewModel',
 }
 
 # Inside a DataTemplate the DataContext is the item, not the page's view model.

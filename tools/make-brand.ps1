@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Generates Soul Remote's icon and the installer's bitmaps from code.
 
@@ -14,6 +14,8 @@
       src/SoulRemote/Assets/app.ico   16..256px, PNG-compressed frames
       installer/banner.bmp            493x58  WixUI top banner
       installer/dialog.bmp            493x312 WixUI welcome/exit background
+      installer/logo.png              64x64   setup.exe theme mark
+      installer/logoside.png          220x460 setup.exe left rail
 #>
 [CmdletBinding()]
 param(
@@ -299,6 +301,85 @@ function Save-Dialog {
     $b.Bitmap.Dispose()
 }
 
+
+# --- setup.exe artwork -------------------------------------------------------
+# Burn's theme blits these at a fixed size, so they are drawn at exactly the size
+# SoulRemoteTheme.xml asks for. PNG rather than BMP: the sidebar is the whole left
+# edge of the window and a 24-bit BMP would have no alpha for the mark to sit on.
+#
+# The names are not a choice. Burn payloads LogoFile and LogoSideFile under the name
+# they already have, and the theme loads them by name, so logo.png and logoside.png is
+# what both ends have to agree on - a mismatch is not a build error, it is setup.exe
+# refusing to open at all.
+
+function Save-Png {
+    param([System.Drawing.Bitmap]$Bitmap, [string]$Path)
+    $Bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+    Write-Host "  png     $Path ($($Bitmap.Width)x$($Bitmap.Height))"
+}
+
+# The 64px mark the theme shows on its help and options pages.
+function Save-BundleLogo {
+    param([string]$Path)
+    $bmp = New-IconBitmap -Size 64
+    Save-Png -Bitmap $bmp -Path $Path
+    $bmp.Dispose()
+}
+
+# The left rail of the setup window: the same dark ground, mark and wordmark the app
+# opens with, so the installer and the app read as one thing.
+function Save-BundleSide {
+    param([string]$Path, [int]$Width = 220, [int]$Height = 460)
+
+    $b = New-Backdrop -Width $Width -Height $Height
+    $g = $b.Graphics
+
+    # A relay-violet hairline down the right edge, exactly as the app draws between
+    # its navigation rail and the stage.
+    $edge = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+        (New-Object System.Drawing.PointF(0, 0)),
+        (New-Object System.Drawing.PointF(0, $Height)),
+        [System.Drawing.Color]::FromArgb(0, $Relay.R, $Relay.G, $Relay.B),
+        [System.Drawing.Color]::FromArgb(0, $Signal.R, $Signal.G, $Signal.B))
+    $blend = New-Object System.Drawing.Drawing2D.ColorBlend(3)
+    $blend.Colors = @(
+        [System.Drawing.Color]::FromArgb(0, $Relay.R, $Relay.G, $Relay.B),
+        [System.Drawing.Color]::FromArgb(128, $Relay.R, $Relay.G, $Relay.B),
+        [System.Drawing.Color]::FromArgb(0, $Signal.R, $Signal.G, $Signal.B))
+    $blend.Positions = @(0.0, 0.5, 1.0)
+    $edge.InterpolationColors = $blend
+    $g.FillRectangle($edge, ($Width - 1), 0, 1, $Height)
+    $edge.Dispose()
+
+    $icon = New-IconBitmap -Size 256
+    $g.DrawImage($icon, 62, 96, 96, 96)
+    $icon.Dispose()
+
+    # Bahnschrift is the app's display face; Segoe UI is the fallback on a machine
+    # that predates it, which is the same order Typography.xaml lists.
+    $display = New-Object System.Drawing.FontFamily('Bahnschrift')
+    $title = New-Object System.Drawing.Font($display, 19, [System.Drawing.FontStyle]::Bold)
+    $sub   = New-Object System.Drawing.Font('Segoe UI', 8.5, [System.Drawing.FontStyle]::Regular)
+    $inkBrush = New-Object System.Drawing.SolidBrush($Ink)
+    $dimBrush = New-Object System.Drawing.SolidBrush($InkDim)
+
+    $centred = New-Object System.Drawing.StringFormat
+    $centred.Alignment = [System.Drawing.StringAlignment]::Center
+    $box = New-Object System.Drawing.RectangleF(0, 210, $Width, 30)
+    $g.DrawString('SOUL REMOTE', $title, $inkBrush, $box, $centred)
+    $box = New-Object System.Drawing.RectangleF(0, 242, $Width, 22)
+    $g.DrawString('Your PC, from Telegram.', $sub, $dimBrush, $box, $centred)
+
+    $centred.Dispose(); $title.Dispose(); $display.Dispose(); $sub.Dispose()
+    $inkBrush.Dispose(); $dimBrush.Dispose()
+
+    Add-RelayLine -G $g -X 55 -Y 310 -Width 110 -Dot 9
+
+    $g.Dispose()
+    Save-Png -Bitmap $b.Bitmap -Path $Path
+    $b.Bitmap.Dispose()
+}
+
 $assets = Join-Path $RepoRoot 'src\SoulRemote\Assets'
 $installer = Join-Path $RepoRoot 'installer'
 foreach ($dir in @($assets, $installer)) {
@@ -309,4 +390,6 @@ Write-Host 'Generating brand assets:'
 Save-Ico    -Path (Join-Path $assets 'app.ico') -Sizes @(16, 20, 24, 32, 40, 48, 64, 128, 256)
 Save-Banner -Path (Join-Path $installer 'banner.bmp')
 Save-Dialog -Path (Join-Path $installer 'dialog.bmp')
+Save-BundleLogo -Path (Join-Path $installer 'logo.png')
+Save-BundleSide -Path (Join-Path $installer 'logoside.png')
 Write-Host 'Done.'

@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using SoulRemote.Localization;
 using SoulRemote.Services;
 
@@ -16,6 +16,13 @@ public sealed class ShellViewModel : ViewModelBase
     public ConnectViewModel Connect { get; }
     public SettingsViewModel Settings { get; }
     public LogViewModel Logs { get; }
+
+    /// <summary>
+    /// The updater card and badge. It is a shell concern rather than a page: an update
+    /// is offered over whatever the user was doing, from any page, and the badge in the
+    /// rail has to be visible from all four.
+    /// </summary>
+    public UpdateViewModel Update { get; }
 
     public string Version => "v" + (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0");
     public string MachineName => Environment.MachineName;
@@ -67,7 +74,8 @@ public sealed class ShellViewModel : ViewModelBase
 
         Dashboard = new DashboardViewModel(services);
         Connect = new ConnectViewModel(services);
-        Settings = new SettingsViewModel(services);
+        Update = new UpdateViewModel(services);
+        Settings = new SettingsViewModel(services, Update);
         Logs = new LogViewModel(services);
 
         NavigateCommand = new RelayCommand(p => Navigate(p as string ?? "dashboard"));
@@ -81,6 +89,10 @@ public sealed class ShellViewModel : ViewModelBase
 
         _services.Bot.StateChanged += OnBotStateChanged;
 
+        // A check can finish at any time - six seconds after launch, or a day later
+        // while the window is on another page. Whenever it does, the card comes up.
+        _services.UpdateCoordinator.UpdateFound += OnUpdateFound;
+
         // A language change reaches here from two directions — the Settings page and
         // the button in the Telegram menu — so the shell listens for the change itself
         // rather than either caller having to remember to tell it.
@@ -89,6 +101,8 @@ public sealed class ShellViewModel : ViewModelBase
 
         UpdateStatus();
     }
+
+    private void OnUpdateFound(Models.AppRelease release) => UiThread.Post(Update.OfferUpdate);
 
     private void OnRouterLanguageChanged(AppLanguage language) => UiThread.Post(() =>
     {
@@ -105,6 +119,7 @@ public sealed class ShellViewModel : ViewModelBase
         OnPropertyChanged(nameof(Crumb));
         UpdateStatus();
         Dashboard.Refresh();
+        Update.Refresh();
     });
 
     public void Navigate(string key)

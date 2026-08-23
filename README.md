@@ -85,7 +85,15 @@ current user only**, so there is no UAC prompt and no admin account needed:
 | Settings | `%APPDATA%\SoulRemote\settings.json` — kept on upgrade, kept on uninstall |
 | Uninstall | *Settings → Apps → Soul Remote*, like any other app |
 
-Installing a newer MSI upgrades in place and keeps your tokens and paired chats.
+**Your setup outlives the program.** Settings live under `%APPDATA%`, not next to the
+exe, and the installer owns nothing there — so the encrypted tokens, the paired chat
+IDs and your language stay put through an upgrade, and through a full uninstall and
+reinstall. Settings are written to a temp file and swapped into place, so the file on
+disk is always a complete one, whatever interrupts the app.
+
+Upgrading while Soul Remote sits in the tray is fine: it closes itself when the
+installer asks, the new version goes in, and no reboot is needed.
+
 For an unattended install:
 
 ```powershell
@@ -204,8 +212,13 @@ CI builds and tests on every push (`.github/workflows/build.yml`); pushing a
 
 - برنامه در `%LOCALAPPDATA%\Programs\Soul Remote` نصب می‌شود.
 - میان‌بر در منوی استارت و (در صورت تمایل) روی دسکتاپ ساخته می‌شود.
-- تنظیمات در `%APPDATA%\SoulRemote\settings.json` می‌ماند و با نصب نسخهٔ جدید یا
-  حذف برنامه پاک نمی‌شود؛ پس توکن‌ها و چت‌های جفت‌شده باقی می‌مانند.
+- تنظیمات در `%APPDATA%\SoulRemote\settings.json` ذخیره می‌شود — کنار فایل برنامه
+  نیست و اینستالر هیچ مالکیتی روی آن ندارد. بنابراین با **ارتقای نسخه** و حتی با
+  **حذف و نصب دوباره**، توکن‌ها (رمزنگاری‌شده)، چت‌های جفت‌شده و زبان سرِ جایشان
+  می‌مانند. نوشتن تنظیمات هم اتمیک است (فایل موقت و سپس جایگزینی)، پس فایل روی دیسک
+  هیچ‌وقت نیمه‌کاره نمی‌ماند.
+- اگر موقع ارتقا برنامه در ترای در حال اجرا باشد مشکلی نیست: خودش بسته می‌شود،
+  نسخهٔ جدید نصب می‌شود و نیازی به ری‌استارت ویندوز نیست.
 - حذف برنامه از مسیر همیشگی ویندوز: **تنظیمات ← Apps ← Soul Remote**.
 
 اگر ترجیح می‌دهید چیزی نصب نشود، همان فایل `SoulRemote.exe` به‌تنهایی هم کار می‌کند

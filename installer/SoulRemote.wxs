@@ -109,6 +109,23 @@
     </ComponentGroup>
 
     <!--
+      Upgrading while Soul Remote is running is the normal case: it lives in the tray
+      and is meant to stay there. A running copy holds its own exe open, and Windows
+      Installer's answer to that is to replace the file at the next reboot - which
+      turns a thirty-second upgrade into "restart your PC".
+
+      From 1.0.1 the app closes itself when Restart Manager asks, so this rarely fires.
+      It stays as the fallback for upgrading a copy that predates that fix. Terminating
+      is safe: settings are written to a temp file and swapped into place, so the file
+      on disk is always a complete one.
+    -->
+    <util:CloseApplication Id="CloseSoulRemote"
+                           Target="SoulRemote.exe"
+                           Description="Soul Remote is running and has to close before it can be updated."
+                           TerminateProcess="0"
+                           RebootPrompt="no" />
+
+    <!--
       A desktop shortcut is on by default - this is a tray app, and the first launch
       is by hand - but a silent deployment can turn it off with
       msiexec /i SoulRemote.msi /qn INSTALLDESKTOPSHORTCUT=0

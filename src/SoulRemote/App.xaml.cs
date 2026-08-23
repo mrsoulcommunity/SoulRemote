@@ -57,6 +57,8 @@ public partial class App : Application
 
         _tray = new TrayIconManager(window, _services, () => ExplicitShutdown());
 
+        SessionEnding += OnSessionEnding;
+
         var startMinimized = _services.Settings.Current.StartMinimized ||
                              e.Args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase));
 
@@ -78,6 +80,23 @@ public partial class App : Application
         {
             _ = _shell.Dashboard.AutoStartAsync();
         }
+    }
+
+    /// <summary>
+    /// Windows is signing the user out or shutting down - or an installer's Restart
+    /// Manager is asking the app to close so it can replace the executable it is
+    /// running from.
+    ///
+    /// Closing the window normally hides to the tray, which is right for the close
+    /// button and wrong here: refusing to go leaves the exe locked, and the installer's
+    /// only remaining option is to tell the user to reboot. Settings are written
+    /// atomically, so there is nothing to lose by leaving promptly.
+    /// </summary>
+    private void OnSessionEnding(object sender, SessionEndingCancelEventArgs e)
+    {
+        _services?.Log.Info($"Session ending ({e.ReasonSessionEnding}); shutting down.");
+        _tray?.BeginExit();
+        ExplicitShutdown();
     }
 
     public void ExplicitShutdown()

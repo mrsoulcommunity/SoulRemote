@@ -160,9 +160,17 @@ public sealed class TrayIconManager : IDisposable
 
     private void ExitApp()
     {
-        _exiting = true;
+        BeginExit();
         _exitAction();
     }
+
+    /// <summary>
+    /// Marks the app as on its way out, so the window's Closing handler stops sending
+    /// it back to the tray. Anything that must really exit - the tray's Exit item, and
+    /// the session-ending path an installer's Restart Manager goes through - calls
+    /// this first, or the close is quietly cancelled and the process stays alive.
+    /// </summary>
+    public void BeginExit() => _exiting = true;
 
     public void Dispose()
     {

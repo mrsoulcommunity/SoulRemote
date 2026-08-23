@@ -9,8 +9,10 @@ Run `SoulRemote-<version>-x64.msi`. It installs for the current user only — no
 admin rights, no UAC prompt — into `%LOCALAPPDATA%\Programs\Soul Remote`, and adds
 a Start-menu shortcut (plus a desktop one, unless you clear the option).
 
-Settings live in `%APPDATA%\SoulRemote\settings.json`, separate from the program, so
-upgrading or uninstalling never touches your tokens or paired chats.
+Settings live in `%APPDATA%\SoulRemote\settings.json`, separate from the program and
+not owned by the installer, so upgrading — or uninstalling and installing again —
+never touches your tokens or paired chats. If the app is running in the tray when you
+upgrade, it closes itself so the new version can go in without a reboot.
 
 If you would rather not install anything, `SoulRemote.exe` runs on its own from
 wherever you put it; the rest of this guide is identical either way.

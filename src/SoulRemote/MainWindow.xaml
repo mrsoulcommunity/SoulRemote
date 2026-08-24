@@ -57,8 +57,10 @@
         </DataTemplate>
     </Window.Resources>
 
-    <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
-        <Grid>
+    <!-- CornerRadius is set from code-behind, which is the only place that knows
+         whether this Windows rounds windows at all and whether we are maximised. -->
+    <Border x:Name="Shell" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
+        <Grid x:Name="ShellContent" SizeChanged="ShellContent_SizeChanged">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="212" />
                 <ColumnDefinition Width="*" />

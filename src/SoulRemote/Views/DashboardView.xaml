@@ -141,7 +141,13 @@
                                 <Border Style="{StaticResource CardInset}" Margin="0,0,0,8">
                                     <Grid>
                                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Left">
+                                            <!-- "Name (@handle)" as Telegram reports it. The handle is
+                                                 always Latin and the brackets around it are bidi-neutral,
+                                                 so under RTL they mirror away from it and the row reads
+                                                 "(Kasra (@kasra". Left-to-right keeps the pair together
+                                                 whichever script the name itself is in. -->
                                             <TextBlock Text="{Binding Label}" Style="{StaticResource Body}"
+                                                       FlowDirection="LeftToRight"
                                                        Visibility="{Binding HasName, Converter={StaticResource BoolToVis}}" />
                                             <TextBlock Text="{Binding IdText}" Style="{StaticResource DataDim}"
                                                        FlowDirection="LeftToRight" />

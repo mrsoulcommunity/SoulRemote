@@ -74,6 +74,16 @@ public static class Strings
 
     internal static (string En, string Fa) Row(string key) => Table[key];
 
+    /// <summary>
+    /// The catalogue. A handful of Persian rows carry a literal <c>\u200E</c> — the
+    /// left-to-right mark — immediately around a bot command or an @handle. Those
+    /// tokens have to be typed back character for character, and the leading slash
+    /// and at-sign are bidi-neutral: inside a Persian sentence they take the
+    /// paragraph direction and land on the wrong end, so "/cmd" reads as "cmd/".
+    /// The mark gives them a left-to-right neighbour to bind to. It is written as
+    /// an escape rather than pasted in, because an invisible character in a string
+    /// literal is one nobody can maintain.
+    /// </summary>
     private static readonly Dictionary<string, (string En, string Fa)> Table = new(StringComparer.Ordinal)
     {
         // ================= Telegram bot: home =================
@@ -377,7 +387,7 @@ public static class Strings
                                       "همهٔ چت‌های متصل لغو شوند؟ برای کنترل این رایانه به کد اتصال تازه نیاز خواهند داشت."),
         ["ui.dash.remove.confirm"] = ("Remove chat {0}? It will need a new pairing code to control this machine.",
                                       "چت {0} حذف شود؟ برای کنترل این رایانه به کد اتصال تازه نیاز خواهد داشت."),
-        ["ui.dash.test.nochats"] = ("Pair a Telegram chat first — send /pair with the code below.", "ابتدا یک چت تلگرام را متصل کنید — /pair را با کد زیر بفرستید."),
+        ["ui.dash.test.nochats"] = ("Pair a Telegram chat first — send /pair with the code below.", "ابتدا یک چت تلگرام را متصل کنید — \u200E/pair\u200E را با کد زیر بفرستید."),
         ["ui.dash.test.failed"] = ("Test message failed: {0}", "پیام آزمایشی نرسید: {0}"),
         ["ui.dash.test.sent"] = ("Test message delivered.", "پیام آزمایشی رسید."),
 
@@ -396,7 +406,7 @@ public static class Strings
         ["ui.connect.tg"] = ("TELEGRAM", "تلگرام"),
         ["ui.connect.tg.role"] = ("the remote", "کنترل از راه دور"),
         ["ui.connect.tg.field"] = ("Bot token", "توکن بات"),
-        ["ui.connect.tg.hint.new"] = ("Ask @BotFather for /newbot, then paste the HTTP API token.", "از @BotFather دستور /newbot را بگیرید و توکن HTTP API را جای‌گذاری کنید."),
+        ["ui.connect.tg.hint.new"] = ("Ask @BotFather for /newbot, then paste the HTTP API token.", "از \u200E@BotFather\u200E دستور \u200E/newbot\u200E را بگیرید و توکن HTTP API را جای‌گذاری کنید."),
         ["ui.connect.tg.hint.saved"] = ("A bot token is already saved. Leave this blank to keep it, or paste a new one to replace it.",
                                         "یک توکن بات ذخیره شده است. برای نگه داشتنش این را خالی بگذارید یا توکن تازه‌ای جای‌گذاری کنید."),
         ["ui.connect.tg.open"] = ("Open BotFather", "باز کردن BotFather"),
@@ -406,7 +416,7 @@ public static class Strings
         ["ui.connect.endpoint"] = ("RELAY ENDPOINT", "نشانی رله"),
         ["ui.connect.working"] = ("Bringing the relay up…", "در حال بالا آوردن رله…"),
         ["ui.connect.done"] = ("Connected as @{0}. Open Telegram and send /pair with the code on the dashboard.",
-                               "با @{0} متصل شد. تلگرام را باز کنید و /pair را با کد داشبورد بفرستید."),
+                               "با \u200E@{0}\u200E متصل شد. تلگرام را باز کنید و \u200E/pair\u200E را با کد داشبورد بفرستید."),
         ["ui.connect.failed"] = ("Connection failed.", "اتصال ناموفق بود."),
         ["ui.connect.needcf"] = ("Paste your Cloudflare API token first.", "ابتدا توکن API کلادفلر را جای‌گذاری کنید."),
         ["ui.connect.needtg"] = ("Paste your Telegram bot token first.", "ابتدا توکن بات تلگرام را جای‌گذاری کنید."),
@@ -464,7 +474,7 @@ public static class Strings
         ["ui.settings.opensettings"] = ("Open settings folder", "باز کردن پوشهٔ تنظیمات"),
         ["ui.settings.permissions.hint"] = ("Power, screenshot, media and process controls are always available to paired chats. These two are off until you turn them on.",
                                             "کنترل برق، اسکرین‌شات، رسانه و پروسه‌ها همیشه در دسترس چت‌های متصل است. این دو تا وقتی روشنشان نکنید خاموش‌اند."),
-        ["ui.settings.shell.label"] = ("Allow shell commands (/cmd)", "اجازهٔ اجرای دستور (/cmd)"),
+        ["ui.settings.shell.label"] = ("Allow shell commands (/cmd)", "اجازهٔ اجرای دستور (\u200E/cmd\u200E)"),
         ["ui.settings.files.label"] = ("Allow browsing and fetching files", "اجازهٔ مرور و دریافت فایل"),
         ["ui.settings.typing.label"] = ("Allow typing into the focused window", "اجازهٔ تایپ در پنجرهٔ فعال"),
         ["ui.settings.typing.hint"] = ("Lets a paired chat send keystrokes to whatever is in front on this PC — including a terminal.",

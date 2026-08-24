@@ -17,7 +17,10 @@
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="32,10,32,32">
-        <StackPanel MaxWidth="760" HorizontalAlignment="Left">
+        <!-- Stretch, not Left: MaxWidth then centres the column, which is what the
+             dashboard, connect and activity pages all do. Pinned left it was the one
+             page that slid to the edge of a maximised window. -->
+        <StackPanel MaxWidth="760" HorizontalAlignment="Stretch">
 
             <TextBlock Text="{p:T ui.settings.title}" Style="{StaticResource Title}" />
             <TextBlock Text="{p:T ui.settings.autosave}" Style="{StaticResource BodyDim}" Margin="0,6,0,0" />

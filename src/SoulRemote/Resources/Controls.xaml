@@ -212,7 +212,12 @@
     <!-- ============================================================
          Inputs
          ============================================================ -->
+    <!-- Every field in this app takes a machine value: an API token, a worker name,
+         a Windows path, a count of seconds. That is why they are set in the data face,
+         and it is the same reason they keep left-to-right order when the window is
+         mirrored — a token is read and typed literally, never as prose. -->
     <Style x:Key="FieldBox" TargetType="TextBox">
+        <Setter Property="FlowDirection" Value="LeftToRight" />
         <Setter Property="Background" Value="{StaticResource RailBrush}" />
         <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
         <Setter Property="CaretBrush" Value="{StaticResource SignalBrush}" />
@@ -255,6 +260,7 @@
         than deriving from it, and the two must be kept in step by eye.
     -->
     <Style x:Key="FieldPassword" TargetType="PasswordBox">
+        <Setter Property="FlowDirection" Value="LeftToRight" />
         <Setter Property="Background" Value="{StaticResource RailBrush}" />
         <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
         <Setter Property="CaretBrush" Value="{StaticResource SignalBrush}" />

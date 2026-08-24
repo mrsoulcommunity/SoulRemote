@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!--
     Soul Remote — SoulRemote-<version>-Setup.exe.
 
@@ -56,6 +56,19 @@
       stays current, and keeps the tick box that goes with it.
     -->
     <BootstrapperApplication>
+      <!--
+        The icon setup.exe shows while it is running.
+
+        IconSourceFile above only dresses the file in Explorer; the window Burn opens
+        is drawn by the bootstrapper from SoulRemoteTheme.xml, and its IconFile has to
+        name something the bootstrapper actually has on disk. Payloading the app's own
+        .ico puts it beside the theme in the folder Burn extracts the BA into, which is
+        where thmutil looks. Without it the installer sits in the taskbar for a minute
+        under the blank default icon, which is the one moment the app has nothing else
+        on screen to identify it by.
+      -->
+      <Payload SourceFile="$(IconFile)" Name="app.ico" />
+
       <!--
         The sidebar variant, because that is the one whose payload carries logoside.png.
         ThemeFile then replaces the layout wholesale, but the choice above still decides

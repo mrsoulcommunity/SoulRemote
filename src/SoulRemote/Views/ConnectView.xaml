@@ -1,4 +1,4 @@
-<UserControl x:Class="SoulRemote.Views.ConnectView"
+﻿<UserControl x:Class="SoulRemote.Views.ConnectView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:SoulRemote.ViewModels"
@@ -27,7 +27,7 @@
 
                 <!-- ===== Inputs ===== -->
                 <StackPanel Grid.Column="0" Margin="0,0,20,0">
-                    <Border Style="{StaticResource Card}">
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="{p:T ui.connect.cf}" Style="{StaticResource Eyebrow}"

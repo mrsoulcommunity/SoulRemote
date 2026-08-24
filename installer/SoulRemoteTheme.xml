@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!--
     Soul Remote — setup theme.
 
@@ -42,7 +42,14 @@
     <!-- Fault, for the failure page. Darkened from the palette to carry on white. -->
     <Font Id="5" Height="-12" Weight="500" Foreground="C0263A" Background="FFFFFF">Segoe UI</Font>
 
-    <Window Width="640" Height="460" HexStyle="100a0000" FontId="0" Caption="#(loc.Caption)">
+    <!--
+        IconFile names a payload of the bootstrapper, not a path in this repository:
+        Burn extracts the BA into a folder of its own and thmutil resolves the name
+        against the theme sitting next to it. Bundle.wxs payloads app.ico for this.
+        Stock wixstdba themes leave it out entirely, which is why setup.exe has been
+        showing the blank default icon in the taskbar.
+    -->
+    <Window Width="640" Height="460" HexStyle="100a0000" FontId="0" IconFile="app.ico" Caption="#(loc.Caption)">
 
         <Page Name="Loading">
             <ImageControl X="0" Y="0" Width="220" Height="460" ImageFile="logoside.png" />

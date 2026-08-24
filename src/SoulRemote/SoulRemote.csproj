@@ -11,9 +11,16 @@
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <AssemblyName>SoulRemote</AssemblyName>
     <RootNamespace>SoulRemote</RootNamespace>
-    <Version>1.0.2</Version>
-    <FileVersion>1.0.2.0</FileVersion>
-    <AssemblyVersion>1.0.2.0</AssemblyVersion>
+    <!--
+      One version, and nothing that overrides it. AssemblyVersion and FileVersion are
+      left to the SDK, which derives both from Version - so a release build passing
+      -p:Version=x.y.z stamps the number the installer registers into the assembly the
+      updater reads back with Assembly.GetName().Version. Pinning them here once meant
+      1.0.3 shipped an assembly still calling itself 1.0.2: every copy saw a newer
+      release forever, closed itself for an installer that then found 1.0.3 already
+      installed and did nothing, and never came back.
+    -->
+    <Version>1.0.4</Version>
     <Product>Soul Remote</Product>
     <Company>MrSoul</Company>
     <LangVersion>latest</LangVersion>

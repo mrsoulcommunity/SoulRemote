@@ -514,6 +514,8 @@ public static class Strings
         ["ui.update.failed"] = ("Update: {0}", "به‌روزرسانی: {0}"),
         ["ui.update.portable"] = ("This copy was not put here by the installer, so it cannot replace itself. Download the new version from the release page.",
                                   "این نسخه را نصب‌کننده اینجا نگذاشته است، پس نمی‌تواند خودش را جایگزین کند. نسخهٔ تازه را از صفحهٔ انتشار دریافت کنید."),
+        ["ui.update.stale"] = ("Version {0} is already installed on this PC, but this copy still reports an older version. Reinstall it from the release page.",
+            "نسخهٔ {0} از قبل روی این رایانه نصب شده، ولی این نسخه هنوز خودش را قدیمی‌تر گزارش می‌کند. آن را از صفحهٔ انتشار دوباره نصب کنید."),
         ["ui.update.restarted"] = ("Updated to {0}.", "به {0} به‌روزرسانی شد."),
 
         // ================= Desktop: activity log =================

@@ -97,6 +97,18 @@ public interface IUpdateInstaller
     bool CanReplaceItself { get; }
 
     /// <summary>
+    /// The version the installer last recorded on this machine, or null when nothing
+    /// has been installed. Read afresh rather than cached, because the whole point of
+    /// it is to describe a machine an installer may have changed under this process.
+    ///
+    /// The updater compares it with the release it is about to apply. An installer
+    /// asked to install a version that is already registered plans nothing, exits
+    /// happily and replaces no files - so handing over to it, having already closed
+    /// the app, loses the app for nothing.
+    /// </summary>
+    Version? InstalledVersion { get; }
+
+    /// <summary>
     /// Hands the installer to Windows and returns once it has started. The caller is
     /// expected to close the app immediately afterwards: an installer cannot replace an
     /// executable that is still running.

@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -51,6 +51,14 @@ public interface IAppUpdateService
 
     /// <summary>Where verified installers are kept.</summary>
     string CacheDirectory { get; }
+
+    /// <summary>
+    /// Puts the updater into <see cref="UpdateStage.Failed"/> with a reason. For the
+    /// things that can only go wrong past the point this service knows about - the
+    /// installer refusing the machine it was handed - so that the card says why instead
+    /// of sitting on "downloaded and verified" forever.
+    /// </summary>
+    void ReportFailure(string message);
 }
 
 public sealed class AppUpdateService : IAppUpdateService, IDisposable
@@ -466,7 +474,7 @@ public sealed class AppUpdateService : IAppUpdateService, IDisposable
             : new Version(version.Major, version.Minor, Math.Max(version.Build, 0));
 
     /// <summary>Reads "v1.2.3", "1.2.3" or "1.2.3-beta.1" as a version. Null when it is not one.</summary>
-    internal static Version? ParseVersion(string? text)
+    public static Version? ParseVersion(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
             return null;
@@ -561,6 +569,8 @@ public sealed class AppUpdateService : IAppUpdateService, IDisposable
         try { if (File.Exists(path)) File.Delete(path); }
         catch { /* a leftover in the temp folder is not worth reporting */ }
     }
+
+    public void ReportFailure(string message) => Fail(message);
 
     private void Fail(string message)
     {

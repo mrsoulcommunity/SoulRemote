@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using Microsoft.Win32;
 
@@ -30,6 +30,15 @@ public sealed class UpdateInstaller : IUpdateInstaller
     }
 
     public string? InstallFolder { get; }
+
+    public Version? InstalledVersion
+    {
+        get
+        {
+            var text = ReadInstallValue(_log, "Version") as string;
+            return AppUpdateService.ParseVersion(text);
+        }
+    }
 
     public bool CanReplaceItself
     {
@@ -116,16 +125,19 @@ public sealed class UpdateInstaller : IUpdateInstaller
 
     private static string Quote(string value) => "\"" + value + "\"";
 
-    private static string? ReadInstallFolder(ILogService log)
+    private static string? ReadInstallFolder(ILogService log) =>
+        ReadInstallValue(log, "InstallFolder") as string;
+
+    private static object? ReadInstallValue(ILogService log, string name)
     {
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(InstallKey, false);
-            return key?.GetValue("InstallFolder") as string;
+            return key?.GetValue(name);
         }
         catch (Exception ex)
         {
-            log.Debug($"Could not read the install folder: {ex.Message}");
+            log.Debug($"Could not read {name} from the install record: {ex.Message}");
             return null;
         }
     }

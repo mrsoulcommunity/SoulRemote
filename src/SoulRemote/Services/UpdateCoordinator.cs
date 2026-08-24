@@ -1,5 +1,6 @@
-using System.Threading;
+﻿using System.Threading;
 using System.Threading.Tasks;
+using SoulRemote.Localization;
 using SoulRemote.Models;
 
 namespace SoulRemote.Services;
@@ -190,6 +191,9 @@ public sealed class UpdateCoordinator : IDisposable
 
     private async Task ApplyCoreAsync(AppRelease release, bool silent)
     {
+        if (AlreadyInstalled(release))
+            return;
+
         var path = _updates.InstallerPath
                    ?? await _updates.FetchAsync(release, _stopping.Token).ConfigureAwait(false);
         if (path is null)
@@ -224,6 +228,34 @@ public sealed class UpdateCoordinator : IDisposable
 
         _log.Info($"Applying update {release.Version.ToString(3)}; Soul Remote is closing so it can be replaced.");
         RequestShutdown?.Invoke();
+    }
+
+    /// <summary>
+    /// Whether this machine already has the release the check just offered.
+    ///
+    /// It is a contradiction — the running build said it was older — and it means one
+    /// of the two numbers is wrong: the installer registered x.y.z while the assembly
+    /// inside it still calls itself something earlier. Handing over anyway is the worst
+    /// of the available answers, because the installer plans nothing, exits reporting
+    /// success, and never runs the action that starts the app again — so the app closes
+    /// itself, stays closed, and does it again the next time somebody opens it. Refusing
+    /// costs the update and keeps the app.
+    /// </summary>
+    private bool AlreadyInstalled(AppRelease release)
+    {
+        var installed = _installer.InstalledVersion;
+        if (installed is null || installed < release.Version)
+            return false;
+
+        _refused.Add(release.Tag);
+        _updates.ReportFailure(Strings.Format("ui.update.stale", release.Version.ToString(3)));
+        _log.Error(
+            $"Refusing to apply {release.Version.ToString(3)}: the installer has already registered " +
+            $"{installed.ToString(3)} on this machine, but this build reports itself as " +
+            $"{_updates.CurrentVersion.ToString(3)}. Running the package again would replace nothing " +
+            "and close the app for good. Reinstall from the release page.");
+        Changed?.Invoke();
+        return true;
     }
 
     private void OnUpdatesChanged() => Changed?.Invoke();

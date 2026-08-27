@@ -28,7 +28,7 @@
       release forever, closed itself for an installer that then found 1.0.3 already
       installed and did nothing, and never came back.
     -->
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Product>Soul Remote</Product>
     <Company>MrSoul</Company>
     <LangVersion>latest</LangVersion>

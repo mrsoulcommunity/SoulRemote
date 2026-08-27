@@ -287,15 +287,25 @@ public sealed class TelegramClient : ITelegramClient, IDisposable
     private async Task SendFileWithFallbackAsync(string method, string field, long chatId, byte[] data,
         string fileName, string? caption, string contentType, CancellationToken ct)
     {
+        // Clipped before it is decorated, and decorated exactly once: clipping a
+        // caption that already carried tags could cut one in half, and the tags do not
+        // count towards Telegram's limit anyway — it measures the text after entities
+        // are parsed.
+        var plain = TextUtil.Clip(caption, MaxCaptionLength);
+        var decorated = _emoji?.Decorate(plain) ?? plain;
+
         try
         {
-            await SendFileAsync(method, field, chatId, data, fileName, caption, contentType, ct, decorate: true)
+            await SendFileAsync(method, field, chatId, data, fileName, decorated, contentType, ct)
                 .ConfigureAwait(false);
         }
-        catch (TelegramApiException ex) when (IsCustomEmojiRefusal(ex))
+        // Only when something was actually added. A document really can be invalid on
+        // its own account, and a refusal blamed on emoji that were never there would
+        // switch the whole feature off over an unrelated upload.
+        catch (TelegramApiException ex) when (!ReferenceEquals(decorated, plain) && IsCustomEmojiRefusal(ex))
         {
             _emoji?.ReportRejected(ex.Description);
-            await SendFileAsync(method, field, chatId, data, fileName, caption, contentType, ct, decorate: false)
+            await SendFileAsync(method, field, chatId, data, fileName, plain, contentType, ct)
                 .ConfigureAwait(false);
         }
     }
@@ -405,8 +415,9 @@ public sealed class TelegramClient : ITelegramClient, IDisposable
         return buffer.ToArray();
     }
 
+    /// <param name="caption">Already clipped and already decorated by the caller.</param>
     private async Task SendFileAsync(string method, string field, long chatId, byte[] data, string fileName,
-        string? caption, string contentType, CancellationToken ct, bool decorate = true)
+        string? caption, string contentType, CancellationToken ct)
     {
         if (data.LongLength > MaxUploadBytes)
             throw new InvalidOperationException(
@@ -419,11 +430,7 @@ public sealed class TelegramClient : ITelegramClient, IDisposable
             form.Add(new StringContent(chatId.ToString(System.Globalization.CultureInfo.InvariantCulture)), "chat_id");
             if (!string.IsNullOrEmpty(caption))
             {
-                // Captions carry entities exactly as message text does, so a screenshot
-                // gets the same emoji as the panel that asked for it.
-                var clipped = TextUtil.Clip(caption, MaxCaptionLength);
-                var text = decorate ? _emoji?.Decorate(clipped) ?? clipped : clipped;
-                form.Add(new StringContent(text, Encoding.UTF8), "caption");
+                form.Add(new StringContent(caption, Encoding.UTF8), "caption");
                 form.Add(new StringContent("HTML"), "parse_mode");
             }
             var fileContent = new ByteArrayContent(data);
@@ -474,11 +481,41 @@ public sealed class TelegramClient : ITelegramClient, IDisposable
         }
     }
 
-    /// <summary>True when Telegram refused the call over a custom emoji rather than the content.</summary>
-    private static bool IsCustomEmojiRefusal(TelegramApiException ex) =>
-        ex.Description is { Length: > 0 } d
-        && (d.Contains("custom emoji", StringComparison.OrdinalIgnoreCase)
-            || d.Contains("tg-emoji", StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// True when Telegram refused the call over a custom emoji rather than over its
+    /// content.
+    ///
+    /// The obvious strings are not the whole list. An identifier that parses as a
+    /// number but names no sticker comes back as a bare "DOCUMENT_INVALID" — the
+    /// custom emoji IS a document, and Telegram is complaining about the document
+    /// rather than about the emoji. That was found the hard way: a startup
+    /// notification carrying one was lost, because a description that never said
+    /// "emoji" did not look like an emoji problem and the plain retry never ran.
+    /// </summary>
+    private static bool IsCustomEmojiRefusal(TelegramApiException ex)
+    {
+        if (ex.Description is not { Length: > 0 } d)
+            return false;
+        foreach (var marker in CustomEmojiRefusals)
+        {
+            if (d.Contains(marker, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// What Telegram says when it will not take a custom emoji. Matched as substrings
+    /// because the description is prefixed ("Bad Request: ...") and sometimes suffixed.
+    /// </summary>
+    private static readonly string[] CustomEmojiRefusals =
+    {
+        "custom emoji",         // "Invalid custom emoji identifier specified"
+        "tg-emoji",             // "Unsupported start tag \"tg-emoji\"" on an old API server
+        "CUSTOM_EMOJI_INVALID",
+        "DOCUMENT_INVALID",     // a well-formed identifier that names no sticker
+        "EMOJI_INVALID",
+    };
 
     private async Task<T?> PostJsonAsync<T>(string method, object payload, CancellationToken ct, int attempts = SendAttempts)
     {

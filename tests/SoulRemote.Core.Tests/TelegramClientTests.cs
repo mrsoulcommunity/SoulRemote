@@ -55,6 +55,132 @@ public sealed class TelegramClientTests
         return (client, handler, log);
     }
 
+    /// <summary>The same, with a premium-emoji look applied on the way out.</summary>
+    private static (TelegramClient Client, StubHandler Handler, PremiumEmojiStyler Emoji) BuildWithEmoji(
+        StubHandler handler)
+    {
+        var settings = new FakeSettings(new Models.AppSettings
+        {
+            UsePremiumEmoji = true,
+            PremiumEmoji = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["📸"] = "5368324170671202286",
+            },
+        });
+        var emoji = new PremiumEmojiStyler(settings, new FakeLog());
+        var client = new TelegramClient(new FakeLog(), handler, emoji);
+        client.Configure("https://relay.example.workers.dev", "123:ABC", "s3cret");
+        return (client, handler, emoji);
+    }
+
+    // ---- premium emoji on the wire ----
+
+    [Theory]
+    // What Telegram actually says for an identifier that names no sticker. It never
+    // uses the word "emoji", which is how a lost startup notification went unexplained.
+    [InlineData("Bad Request: DOCUMENT_INVALID")]
+    [InlineData("Bad Request: Invalid custom emoji identifier specified")]
+    [InlineData("Bad Request: CUSTOM_EMOJI_INVALID")]
+    // Quotes omitted: the value is spliced into a JSON body by this test, and the
+    // marker being matched is the tag name.
+    [InlineData("Bad Request: can't parse entities: Unsupported start tag tg-emoji at byte offset 0")]
+    public async Task A_message_refused_over_its_emoji_is_sent_again_plain(string description)
+    {
+        var handler = new StubHandler()
+            .Then(HttpStatusCode.BadRequest, $"{{\"ok\":false,\"error_code\":400,\"description\":\"{description}\"}}")
+            .ThenOk("{\"message_id\":7}");
+        var (client, _, emoji) = BuildWithEmoji(handler);
+
+        var id = await client.SendMessageAsync(42, "📸 Capture");
+
+        // The reply the user was waiting for arrives, without its decoration.
+        Assert.Equal(7, id);
+        Assert.Equal(2, handler.Bodies.Count);
+        Assert.Contains("tg-emoji", handler.Bodies[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("tg-emoji", handler.Bodies[1], StringComparison.Ordinal);
+
+        // And nothing is decorated again, so one bad identifier costs one round trip
+        // rather than doubling every message for the rest of the session.
+        Assert.Equal(PremiumEmojiState.Refused, emoji.State);
+    }
+
+    [Fact]
+    public async Task A_refusal_that_has_nothing_to_do_with_emoji_is_not_retried()
+    {
+        var handler = new StubHandler()
+            .Then(HttpStatusCode.BadRequest,
+                "{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: chat not found\"}");
+        var (client, _, emoji) = BuildWithEmoji(handler);
+
+        await Assert.ThrowsAsync<TelegramApiException>(() => client.SendMessageAsync(42, "📸 Capture"));
+
+        Assert.Single(handler.Bodies);
+        Assert.Equal(PremiumEmojiState.Unknown, emoji.State);
+    }
+
+    [Fact]
+    public async Task A_caption_refused_over_its_emoji_still_delivers_the_screenshot()
+    {
+        // The upload is repeated in full, because a caption cannot be put onto a
+        // message Telegram never accepted — and losing a screenshot somebody asked
+        // for to a cosmetic setting is the worst outcome available.
+        var handler = new StubHandler()
+            .Then(HttpStatusCode.BadRequest,
+                "{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: DOCUMENT_INVALID\"}")
+            .ThenOk("{\"message_id\":9}");
+        var (client, _, emoji) = BuildWithEmoji(handler);
+
+        await client.SendPhotoAsync(42, new byte[] { 1, 2, 3 }, "shot.png", "📸 Desktop");
+
+        Assert.Equal(2, handler.Bodies.Count);
+        Assert.Contains("tg-emoji", handler.Bodies[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("tg-emoji", handler.Bodies[1], StringComparison.Ordinal);
+        Assert.Contains("Desktop", handler.Bodies[1], StringComparison.Ordinal);
+        Assert.Equal(PremiumEmojiState.Refused, emoji.State);
+    }
+
+    [Fact]
+    public async Task A_document_that_is_genuinely_invalid_is_not_blamed_on_the_emoji()
+    {
+        // No emoji in this caption, so DOCUMENT_INVALID means what it says. Retrying
+        // would waste an upload, and switching the feature off would be a guess.
+        var handler = new StubHandler()
+            .Then(HttpStatusCode.BadRequest,
+                "{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: DOCUMENT_INVALID\"}");
+        var (client, _, emoji) = BuildWithEmoji(handler);
+
+        await Assert.ThrowsAsync<TelegramApiException>(
+            () => client.SendDocumentAsync(42, new byte[] { 1 }, "notes.txt", "Plain caption"));
+
+        Assert.Single(handler.Bodies);
+        Assert.Equal(PremiumEmojiState.Unknown, emoji.State);
+    }
+
+    [Fact]
+    public async Task A_stripped_entity_in_the_reply_is_read_as_a_refusal()
+    {
+        // The quiet failure: 200 OK, and the entities simply gone.
+        var handler = new StubHandler().ThenOk("{\"message_id\":7,\"entities\":[]}");
+        var (client, _, emoji) = BuildWithEmoji(handler);
+
+        await client.SendMessageAsync(42, "📸 Capture");
+
+        Assert.Equal(PremiumEmojiState.Refused, emoji.State);
+    }
+
+    [Fact]
+    public async Task An_entity_that_survives_proves_the_bot_may_send_them()
+    {
+        var handler = new StubHandler().ThenOk(
+            "{\"message_id\":7,\"entities\":[{\"type\":\"custom_emoji\",\"offset\":0,\"length\":2,"
+            + "\"custom_emoji_id\":\"5368324170671202286\"}]}");
+        var (client, _, emoji) = BuildWithEmoji(handler);
+
+        await client.SendMessageAsync(42, "📸 Capture");
+
+        Assert.Equal(PremiumEmojiState.Working, emoji.State);
+    }
+
     [Fact]
     public async Task Every_call_goes_through_the_worker_and_carries_the_shared_secret()
     {

@@ -34,14 +34,23 @@ VIEW_CONTEXT = {
     'src/SoulRemote/Views/UpdateCard.xaml': 'UpdateViewModel',
 }
 
-# Inside a DataTemplate the DataContext is the item, not the page's view model.
-ITEM_TYPES = ['ConnectionStep', 'PairedChatViewModel', 'LogEntry']
+# The DataContext is not the page's view model everywhere on the page. Inside a
+# DataTemplate it is the item being drawn, and a panel that sets DataContext itself
+# re-roots every binding under it onto that object. Both kinds are listed here, so a
+# binding is accepted when it resolves against any context the page actually offers.
+ITEM_TYPES = [
+    'ConnectionStep', 'PairedChatViewModel', 'LogEntry',
+    # The premium-emoji card sets DataContext="{Binding Emoji}", and each chip in it
+    # is templated over one row of that card's list.
+    'PremiumEmojiViewModel', 'EmojiRowViewModel',
+]
 
 # Types that do not live in a file of their own.
 DECLARED_IN = {
     'ConnectionStep': 'src/SoulRemote.Core/Services/ConnectionOrchestrator.cs',
     'LogEntry': 'src/SoulRemote.Core/Services/LogService.cs',
     'RelayLine': 'src/SoulRemote/Controls/RelayLine.xaml.cs',
+    'EmojiRowViewModel': 'src/SoulRemote/ViewModels/PremiumEmojiViewModel.cs',
 }
 
 SEARCH_ROOTS = ['src/SoulRemote', 'src/SoulRemote.Core']

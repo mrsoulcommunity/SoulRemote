@@ -215,8 +215,126 @@ public static class BotMenu
         return new Screen(text, Keyboard(
             Row((T("bot.set.perms"), "m:sper"), (T("bot.set.startup"), "m:sst")),
             Row((T("bot.set.prefs"), "m:sbot"), (T("bot.set.chats"), "m:scht")),
-            Row((T("bot.set.windows"), "m:swin")),
+            Row((T("bot.set.emoji"), "m:semj"), (T("bot.set.windows"), "m:swin")),
             Row((T("bot.menu.back"), "m:home"))));
+    }
+
+    // ---- Premium emoji ----
+
+    /// <summary>How many emoji a page of the converted-emoji list shows.</summary>
+    public const int EmojiPageSize = 12;
+
+    /// <summary>
+    /// The premium-emoji panel.
+    ///
+    /// It leads with what was actually achieved — "38 of 64 converted" — rather than
+    /// with the switch, because that number is the only honest answer to the question
+    /// someone opens this screen with. A pack covers whatever it covers; the emoji it
+    /// has no version of stay as they were, and saying so here is better than leaving
+    /// the user to notice.
+    /// </summary>
+    public static Screen PremiumEmoji(AppSettings s, PremiumEmojiState state, bool writable)
+    {
+        var mapped = EmojiCatalog.ConvertedCount(s.PremiumEmoji);
+        var text = new StringBuilder(T("bot.set.emoji.title"));
+        text.Append('\n').Append(Strings.Format("bot.set.emoji.count", mapped, EmojiCatalog.Count));
+
+        if (s.PremiumEmojiPack is { Length: > 0 } pack)
+            text.Append('\n').Append(Strings.Format("bot.set.emoji.pack", TextUtil.Html(pack)));
+
+        // The entitlement line only appears once there is something to report: telling
+        // someone their premium emoji might not be allowed before they have set any is
+        // a warning about a problem they do not have yet.
+        if (mapped > 0)
+        {
+            text.Append('\n').Append(state switch
+            {
+                PremiumEmojiState.Working => T("bot.set.emoji.working"),
+                PremiumEmojiState.Refused => T("bot.set.emoji.refused"),
+                _ => T("bot.set.emoji.untested"),
+            });
+        }
+
+        if (!writable)
+        {
+            text.Append("\n\n").Append(T("bot.set.readonly"));
+            return new Screen(text.ToString(), Keyboard(Row((T("bot.menu.back"), "m:set"))));
+        }
+
+        var rows = new List<List<TgInlineKeyboardButton>>();
+        Toggle(rows, text, "bot.set.emoji.use", s.UsePremiumEmoji, "s:t.pemj", true);
+        rows.Add(Row((T("bot.set.emoji.import"), "i:epk")));
+        rows.Add(Row((T("bot.set.emoji.add"), "i:eadd")));
+        rows.Add(Row((T("bot.set.emoji.list"), "m:seml.0")));
+        if (mapped > 0)
+            rows.Add(Row((T("bot.set.emoji.clear"), "c:ecl")));
+        rows.Add(Row((T("bot.menu.back"), "m:set")));
+        return new Screen(text.ToString(), Keyboard(rows));
+    }
+
+    /// <summary>
+    /// One page of every emoji the bot uses, each showing whether it has a premium
+    /// stand-in. Tapping a converted one clears it; tapping a plain one asks for the
+    /// premium version of that particular emoji.
+    ///
+    /// Paged because Telegram will not take an unbounded keyboard and a wall of sixty
+    /// buttons is not a list anyone reads. The payload carries an index into the
+    /// catalogue rather than the emoji itself: the catalogue is built the same way
+    /// every run, and an emoji is several bytes of a sixty-four byte budget.
+    /// </summary>
+    public static Screen PremiumEmojiList(AppSettings s, int page, bool writable)
+    {
+        var all = EmojiCatalog.All;
+        var pages = Math.Max(1, (all.Count + EmojiPageSize - 1) / EmojiPageSize);
+        page = Math.Clamp(page, 0, pages - 1);
+
+        var text = new StringBuilder(T("bot.set.emoji.list.title"));
+        text.Append('\n').Append(Strings.Format("bot.set.emoji.list.page", page + 1, pages));
+        if (writable)
+            text.Append('\n').Append(T("bot.set.emoji.list.hint"));
+        else
+            text.Append("\n\n").Append(T("bot.set.readonly"));
+
+        var rows = new List<List<TgInlineKeyboardButton>>();
+        var start = page * EmojiPageSize;
+        var end = Math.Min(start + EmojiPageSize, all.Count);
+
+        for (var i = start; i < end; i += 2)
+        {
+            var row = new List<TgInlineKeyboardButton>();
+            for (var j = i; j < Math.Min(i + 2, end); j++)
+            {
+                var use = all[j];
+                var on = s.PremiumEmoji.ContainsKey(use.Emoji);
+                var caption = (on ? "✅ " : "⬜ ") + use.Emoji + " "
+                              + TextUtil.Clip(EmojiCatalog.LabelFor(use.Emoji), 18);
+                if (writable)
+                {
+                    // A button caption is plain text to Telegram, so it goes as it is.
+                    row.Add(new TgInlineKeyboardButton(caption,
+                        (on ? "s:erm." : "i:eone.") + j.ToString(CultureInfo.InvariantCulture)));
+                }
+                else
+                {
+                    // The same caption in the message body is not: it is parsed as HTML,
+                    // and a label like "Startup & notifications" carries an ampersand.
+                    text.Append('\n').Append(TextUtil.Html(caption));
+                }
+            }
+            if (row.Count > 0)
+                rows.Add(row);
+        }
+
+        var nav = new List<TgInlineKeyboardButton>();
+        if (page > 0)
+            nav.Add(new TgInlineKeyboardButton(T("bot.set.emoji.prev"), $"m:seml.{page - 1}"));
+        if (page < pages - 1)
+            nav.Add(new TgInlineKeyboardButton(T("bot.set.emoji.next"), $"m:seml.{page + 1}"));
+        if (nav.Count > 0)
+            rows.Add(nav);
+
+        rows.Add(Row((T("bot.menu.back"), "m:semj")));
+        return new Screen(text.ToString(), Keyboard(rows));
     }
 
     public static Screen Permissions(AppSettings s, bool writable)

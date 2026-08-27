@@ -28,6 +28,7 @@ public sealed class SettingsViewModel : ViewModelBase
         // every successful save; without listening to it, a toggle flipped from a phone
         // would leave this window showing the old position until it was rebuilt.
         _services.Settings.Changed += OnSettingsChanged;
+        Emoji = new PremiumEmojiViewModel(services);
         OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
         OpenSettingsFileCommand = new RelayCommand(OpenSettingsFolder);
         SetLanguageCommand = new RelayCommand(p => SetLanguage(p as string));
@@ -70,7 +71,12 @@ public sealed class SettingsViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(IsEnglish));
         OnPropertyChanged(nameof(IsPersian));
+        // The emoji labels are read out of the string catalogue, so they change with it.
+        Emoji.NotifyLanguageChanged();
     }
+
+    /// <summary>The premium-emoji card. Its own view model: it has state the rest has not.</summary>
+    public PremiumEmojiViewModel Emoji { get; }
 
     /// <summary>The updater, shown as a card on this page and as a modal from the shell.</summary>
     public UpdateViewModel Update { get; }

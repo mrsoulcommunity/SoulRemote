@@ -19,6 +19,13 @@ public sealed class AppServices
     public ISettingsService Settings { get; }
     public ICloudflareService Cloudflare { get; }
     public ITelegramClient Telegram { get; }
+
+    /// <summary>
+    /// The premium-emoji look. Public because both settings surfaces report on it —
+    /// the desktop card and the bot's own screen — and neither can say whether
+    /// Telegram is honouring the emoji without asking it.
+    /// </summary>
+    public PremiumEmojiStyler Emoji { get; }
     public ISystemControlService System { get; }
     public IScreenshotService Screenshot { get; }
     public ISystemInfoService Info { get; }
@@ -47,7 +54,12 @@ public sealed class AppServices
             Log.Info($"Removed {pruned} log file(s) older than {settings.LogRetentionDays} days.");
 
         Cloudflare = new CloudflareService(Log);
-        Telegram = new TelegramClient(Log);
+
+        // Built before the client and handed to it: the emoji are applied on the way
+        // out, at the one point every message passes through, rather than at each of
+        // the places the bot composes one.
+        Emoji = new PremiumEmojiStyler(Settings, Log);
+        Telegram = new TelegramClient(Log, handler: null, emoji: Emoji);
         System = new SystemControlService(Log);
         Screenshot = new ScreenshotService();
         Info = new SystemInfoService(Log, Settings, Cloudflare);
@@ -63,7 +75,7 @@ public sealed class AppServices
         // The router is handed the startup manager and the Windows-settings service
         // as well, because the bot's Settings section writes through both.
         Router = new CommandRouter(Settings, Telegram, System, Screenshot, Info, Log,
-            clock: null, pc: PcSettings, startup: Startup);
+            clock: null, pc: PcSettings, startup: Startup, emoji: Emoji);
         Bot = new BotEngine(Settings, Telegram, Router, Log);
         Orchestrator = new ConnectionOrchestrator(Settings, Cloudflare, Telegram, Bot, Log, WpfDispatcher.Instance);
     }

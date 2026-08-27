@@ -33,8 +33,17 @@ public sealed class CommandRouter
     private readonly IClock _clock;
     private readonly IPcSettingsService? _pc;
     private readonly IStartupManager? _startup;
+
+    /// <summary>
+    /// The premium-emoji look. Only read here — the client applies it — but the
+    /// settings screen has to say whether Telegram is actually honouring it.
+    /// </summary>
+    private readonly IEmojiStyler? _emoji;
     private readonly ChatPrompts _prompts;
     private readonly FileBrowser _files = new();
+
+    /// <summary>Applies premium emoji packs. Shared, in behaviour, with the desktop page.</summary>
+    private readonly EmojiImporter _emojiImporter;
 
     /// <summary>The Wi-Fi profile list each chat is currently looking at.</summary>
     private readonly ChoiceCache _wifiList = new();
@@ -86,10 +95,14 @@ public sealed class CommandRouter
     /// Writes the sign-in entry. Null hides the Start-with-Windows toggle instead of
     /// offering one that would store a flag nothing acts on.
     /// </param>
+    /// <param name="emoji">
+    /// The premium-emoji look, so its screen can report whether Telegram is honouring
+    /// it. Null simply leaves that line reading "not tried yet".
+    /// </param>
     public CommandRouter(
         ISettingsService settings, ITelegramClient telegram, ISystemControlService system,
         IScreenshotService screenshot, ISystemInfoService info, ILogService log, IClock? clock = null,
-        IPcSettingsService? pc = null, IStartupManager? startup = null)
+        IPcSettingsService? pc = null, IStartupManager? startup = null, IEmojiStyler? emoji = null)
     {
         _settings = settings;
         _telegram = telegram;
@@ -100,6 +113,8 @@ public sealed class CommandRouter
         _clock = clock ?? SystemClock.Instance;
         _pc = pc;
         _startup = startup;
+        _emoji = emoji;
+        _emojiImporter = new EmojiImporter(settings, telegram);
         _prompts = new ChatPrompts(_clock);
         _commandLimit = new RateLimiter(20, TimeSpan.FromSeconds(10), _clock);
         _strangerLimit = new RateLimiter(3, TimeSpan.FromMinutes(1), _clock);
@@ -301,6 +316,15 @@ public sealed class CommandRouter
             return BotMenu.Chat(target, settings.NameFor(target), target == chatId, writable);
         }
 
+        // One page of the converted-emoji list: "m:seml.<page>".
+        if (screen.StartsWith("seml", StringComparison.Ordinal))
+        {
+            var page = 0;
+            if (screen.Length > 5)
+                int.TryParse(screen[5..], NumberStyles.Integer, CultureInfo.InvariantCulture, out page);
+            return BotMenu.PremiumEmojiList(settings, page, writable);
+        }
+
         return screen switch
         {
             "cap" => BotMenu.Capture(SafeScreenCount()),
@@ -315,6 +339,7 @@ public sealed class CommandRouter
             "sst" => BotMenu.Startup(settings, writable, _startup is not null),
             "sbot" => BotMenu.BotPrefs(settings, writable),
             "scht" => BotMenu.Chats(settings, chatId, writable),
+            "semj" => BotMenu.PremiumEmoji(settings, _emoji?.State ?? PremiumEmojiState.Unknown, writable),
             "swin" => BotMenu.WindowsSettings(_pc is not null),
             // The Windows leaves are resolved by AsyncScreenFor; reaching here means
             // there is no Windows half, so say that rather than rendering an empty one.
@@ -374,7 +399,7 @@ public sealed class CommandRouter
     private static bool IsSettingsConfirm(string action) =>
         action.StartsWith("p.", StringComparison.Ordinal)
         || action.StartsWith("cr.", StringComparison.Ordinal)
-        || action == "wd";
+        || action is "wd" or "ecl";
 
     private Confirmation ConfirmationFor(string action, long chatId)
     {
@@ -406,6 +431,16 @@ public sealed class CommandRouter
                 Strings.Format(isSelf ? "bot.confirm.revoke.self.question" : "bot.confirm.revoke.question",
                     TextUtil.Html(name)),
                 "m:scht");
+        }
+
+        if (action == "ecl")
+        {
+            // Confirmed because an imported pack is not something the user can put back
+            // with an undo: getting it here took finding the pack and sending it.
+            return new Confirmation(
+                Strings.Get("bot.confirm.emoji.clear.toast"),
+                Strings.Get("bot.confirm.emoji.clear.question"),
+                "m:semj");
         }
 
         if (action == "wd")
@@ -477,6 +512,12 @@ public sealed class CommandRouter
             arg = value[3..];
             value = "rn";
         }
+        // "eone.<index>" is the same shape: the premium version of one named emoji.
+        else if (value.StartsWith("eone.", StringComparison.Ordinal))
+        {
+            arg = value[5..];
+            value = "eone";
+        }
 
         var kind = value switch
         {
@@ -494,6 +535,9 @@ public sealed class CommandRouter
             "dlf" => PromptKind.DownloadFolder,
             "bri" => PromptKind.Brightness,
             "rn" => PromptKind.RenameChat,
+            "epk" => PromptKind.EmojiPack,
+            "eadd" => PromptKind.PremiumEmoji,
+            "eone" => PromptKind.PremiumEmojiFor,
             _ => PromptKind.None,
         };
         if (kind == PromptKind.None)
@@ -682,6 +726,9 @@ public sealed class CommandRouter
                     result = await ConnectWifiAsync(chatId, arg, ct).ConfigureAwait(false);
                     screen = "swif";
                     break;
+                case "erm":
+                    (result, screen) = ClearOneEmoji(arg);
+                    break;
                 default:
                     await _telegram.AnswerCallbackAsync(callbackId, null, false, ct).ConfigureAwait(false);
                     return;
@@ -718,6 +765,9 @@ public sealed class CommandRouter
                            Strings.Get("bot.set.startup.startmin")), "sst"),
             "noti" => (ApplySetting(s => s.NotifyOnStartup = on, on ? "act.set.on" : "act.set.off",
                            Strings.Get("bot.set.startup.notify")), "sst"),
+
+            "pemj" => (ApplySetting(s => s.UsePremiumEmoji = on, on ? "act.set.on" : "act.set.off",
+                           Strings.Get("bot.set.emoji.use")), "semj"),
 
             // The two update switches are coupled the same way the desktop couples
             // them: nothing may install unattended while nothing is checking, because
@@ -833,6 +883,11 @@ public sealed class CommandRouter
                 result = RevokeChat(action[3..]);
                 screen = "scht";
             }
+            else if (action == "ecl")
+            {
+                result = _emojiImporter.ClearAll();
+                screen = "semj";
+            }
             else if (action == "wd")
             {
                 RequirePcSettings();
@@ -889,6 +944,51 @@ public sealed class CommandRouter
 
         var key = target.ToString(CultureInfo.InvariantCulture);
         return ApplySetting(s => s.ChatNames[key] = trimmed, "bot.set.chat.renamed", trimmed);
+    }
+
+    // ============================================================
+    // Premium emoji
+    //
+    // The rules live in EmojiImporter, which the desktop window shares. Only the
+    // parts that are about *this* surface stay here: turning a button payload back
+    // into the emoji it pointed at, and keeping that payload short.
+    // ============================================================
+
+    /// <summary>Takes one emoji's premium stand-in away again.</summary>
+    private (string Result, string Screen) ClearOneEmoji(string arg)
+    {
+        var emoji = EmojiAt(arg) ?? throw new InvalidOperationException(Strings.Get("bot.set.stale"));
+        return (_emojiImporter.ClearOne(emoji), PageOf(arg));
+    }
+
+    /// <summary>
+    /// The list screen holding a given emoji. Undoing one on page five should leave
+    /// you on page five; the payload already says which emoji it was, so there is
+    /// nothing to look up.
+    /// </summary>
+    private static string PageOf(string? index)
+    {
+        var i = index is not null
+                && int.TryParse(index, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? Math.Max(parsed, 0)
+            : 0;
+        return "seml." + (i / BotMenu.EmojiPageSize).ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// The catalogue emoji a payload's index refers to, or null when it is stale.
+    ///
+    /// The payload carries an index rather than the emoji itself because the
+    /// catalogue is built the same way on every run, and an emoji can be four bytes
+    /// of a sixty-four byte budget that also has to hold the prefix.
+    /// </summary>
+    private static string? EmojiAt(string? index)
+    {
+        if (index is null
+            || !int.TryParse(index, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i)
+            || i < 0 || i >= EmojiCatalog.All.Count)
+            return null;
+        return EmojiCatalog.All[i].Emoji;
     }
 
     /// <summary>Splits "a.b.c" into ("a", "b.c"), or ("a", "") when there is no separator.</summary>
@@ -1062,7 +1162,13 @@ public sealed class CommandRouter
         // Shortcut-bar taps arrive as ordinary text and must be recognised BEFORE a
         // pending prompt claims them — otherwise tapping "Lock" while a "Type text…"
         // prompt is open types the word "Lock" into the focused window instead.
-        if (ShortcutActionFor(raw) is { } shortcut)
+        // The bare form is only accepted when nothing is waiting for an answer. A tap
+        // on a bar wearing premium icons arrives as the plain word "Lock", and so does
+        // someone answering "type this into the focused window" with the word Lock —
+        // the two are indistinguishable. The prompt wins, because it is an explicit
+        // request made seconds ago, and because locking a PC that was asked to type is
+        // far worse than typing a word that was meant as a tap.
+        if (ShortcutActionFor(raw, allowBareCaption: !_prompts.HasPending(chatId)) is { } shortcut)
         {
             _prompts.Clear(chatId);
             switch (shortcut)
@@ -1090,7 +1196,10 @@ public sealed class CommandRouter
             var kind = _prompts.Take(chatId, out var promptArg);
             if (kind != PromptKind.None)
             {
-                await FulfilPromptAsync(chatId, kind, raw, promptArg, ct).ConfigureAwait(false);
+                // The entities travel with the answer because a premium emoji is not in
+                // the text: what arrives is the ordinary emoji it stands for, plus an
+                // entity naming the custom one. The text alone cannot tell them apart.
+                await FulfilPromptAsync(chatId, kind, raw, promptArg, msg.Entities, ct).ConfigureAwait(false);
                 return;
             }
         }
@@ -1112,17 +1221,43 @@ public sealed class CommandRouter
     /// language still has the previous bar pinned in Telegram until a new one is sent,
     /// so both sets have to keep working.
     /// </summary>
-    private static string? ShortcutActionFor(string text)
+    /// <param name="allowBareCaption">
+    /// Whether a caption stripped of its emoji may be matched. A bar wearing premium
+    /// emoji carries them in the buttons' icon field rather than in the label, so a
+    /// tap comes back as "Lock" rather than "🔒 Lock" — but that is also just a word
+    /// somebody might type, so the caller decides when it is safe to read as a tap.
+    /// </param>
+    private string? ShortcutActionFor(string text, bool allowBareCaption)
     {
         foreach (var (caption, action) in BotMenu.ShortcutCaptions())
         {
+            // The full caption is unambiguous: nobody types "🔒 Lock" by hand.
             if (string.Equals(caption, text, StringComparison.Ordinal))
+                return action;
+
+            if (!allowBareCaption)
+                continue;
+
+            var (emoji, label) = EmojiText.SplitLeadingEmoji(caption);
+            if (emoji.Length > 0 && IsMovedToIcon(emoji)
+                && string.Equals(label, text, StringComparison.Ordinal))
                 return action;
         }
         return null;
     }
 
-    private async Task FulfilPromptAsync(long chatId, PromptKind kind, string input, string? arg, CancellationToken ct)
+    /// <summary>
+    /// Whether this emoji is currently being lifted off button labels — the same
+    /// three conditions the styler applies before it rewrites a keyboard.
+    /// </summary>
+    private bool IsMovedToIcon(string emoji) =>
+        _emoji is { State: PremiumEmojiState.Working }
+        && _settings.Current.UsePremiumEmoji
+        && _settings.Current.PremiumEmoji.ContainsKey(emoji);
+
+    private async Task FulfilPromptAsync(
+        long chatId, PromptKind kind, string input, string? arg,
+        IReadOnlyList<TgMessageEntity>? entities, CancellationToken ct)
     {
         Count("prompt:" + kind);
 
@@ -1186,6 +1321,32 @@ public sealed class CommandRouter
             case PromptKind.RenameChat:
                 await SendResultAsync(chatId, () => RenameChat(arg ?? string.Empty, input), ct)
                     .ConfigureAwait(false);
+                return;
+
+            case PromptKind.EmojiPack:
+                await SendAsyncResultAsync(chatId,
+                    () => _emojiImporter.ImportPackAsync(input, entities, ct), ct).ConfigureAwait(false);
+                await ShowScreenAsync(chatId, 0, "semj", ct).ConfigureAwait(false);
+                return;
+
+            case PromptKind.PremiumEmoji:
+                await SendAsyncResultAsync(chatId,
+                    () => _emojiImporter.AdoptAsync(entities, null, null, ct), ct).ConfigureAwait(false);
+                await ShowScreenAsync(chatId, 0, "semj", ct).ConfigureAwait(false);
+                return;
+
+            case PromptKind.PremiumEmojiFor:
+                await SendAsyncResultAsync(chatId, () =>
+                {
+                    // A panel can sit in a chat for hours. If its index no longer names
+                    // an emoji, the tap has to be refused rather than falling back to
+                    // "convert whatever was sent" — which would silently convert an
+                    // emoji the user never pointed at and report it as a success.
+                    var target = EmojiAt(arg)
+                        ?? throw new InvalidOperationException(Strings.Get("bot.set.stale"));
+                    return _emojiImporter.AdoptAsync(entities, null, target, ct);
+                }, ct).ConfigureAwait(false);
+                await ShowScreenAsync(chatId, 0, PageOf(arg), ct).ConfigureAwait(false);
                 return;
         }
 
@@ -1372,6 +1533,10 @@ public sealed class CommandRouter
                 // Never guarded: reading how your own PC is configured is not a write,
                 // and the read-only panel is what explains why nothing is tappable.
                 await ShowScreenAsync(chatId, 0, "set", ct).ConfigureAwait(false);
+                break;
+
+            case "emoji":
+                await ShowScreenAsync(chatId, 0, "semj", ct).ConfigureAwait(false);
                 break;
             case "whoami":
                 await SendTextAsync(chatId, Strings.Format("bot.chatid", chatId), ct).ConfigureAwait(false);

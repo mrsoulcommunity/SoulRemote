@@ -109,6 +109,13 @@ public sealed class SettingsSectionTests
         "i:dlf",
         "i:bri",
         "i:rn.2002",
+        "s:t.pemj.1",
+        "s:erm.0",
+        "c:ecl",
+        "y:ecl",
+        "i:epk",
+        "i:eadd",
+        "i:eone.0",
     };
 
     // ---------- reachability ----------

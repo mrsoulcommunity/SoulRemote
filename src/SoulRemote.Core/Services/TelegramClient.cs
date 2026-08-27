@@ -43,6 +43,17 @@ public interface ITelegramClient
 
     /// <summary>Publishes the typed-command list Telegram shows behind the "/" button.</summary>
     Task SetMyCommandsAsync(IReadOnlyList<(string Command, string Description)> commands, CancellationToken ct = default);
+
+    /// <summary>
+    /// Looks custom ("premium") emoji up by identifier. An incoming message names the
+    /// emoji a user sent only by its id; this is what turns that into the ordinary
+    /// emoji it stands for and the pack it came from. Telegram takes at most 200 ids
+    /// at a time and asks for no privilege to read them.
+    /// </summary>
+    Task<IReadOnlyList<TgSticker>> GetCustomEmojiStickersAsync(IReadOnlyList<string> ids, CancellationToken ct = default);
+
+    /// <summary>Fetches a whole sticker set — for an emoji pack, every custom emoji in it.</summary>
+    Task<TgStickerSet> GetStickerSetAsync(string name, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -72,12 +83,22 @@ public sealed class TelegramClient : ITelegramClient, IDisposable
     /// <summary>A bot may not download more than this through getFile.</summary>
     public const long MaxDownloadBytes = 20L * 1024 * 1024;
 
+    /// <summary>getCustomEmojiStickers takes at most this many identifiers per call.</summary>
+    public const int MaxCustomEmojiLookup = 200;
+
     private const int SendAttempts = 3;
     private static readonly TimeSpan MaxFloodWait = TimeSpan.FromSeconds(30);
 
     private readonly ILogService _log;
     private readonly HttpClient _http;
     private readonly bool _ownsHttp;
+
+    /// <summary>
+    /// The custom-emoji look, applied here rather than where messages are composed.
+    /// Null on a client built without one — the tests, and any path that wants the
+    /// bot's plain output.
+    /// </summary>
+    private readonly IEmojiStyler? _emoji;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -95,9 +116,15 @@ public sealed class TelegramClient : ITelegramClient, IDisposable
     /// the tests hand in a stub so the whole request/response contract — including
     /// flood control — can be exercised without a network.
     /// </param>
-    public TelegramClient(ILogService log, HttpMessageHandler? handler = null)
+    /// <param name="emoji">
+    /// Dresses outgoing text and buttons in the user's premium emoji. Optional so a
+    /// client can be built before the setting it reads exists, and so the tests can
+    /// exercise the wire format without one.
+    /// </param>
+    public TelegramClient(ILogService log, HttpMessageHandler? handler = null, IEmojiStyler? emoji = null)
     {
         _log = log;
+        _emoji = emoji;
         // Timeout must exceed the longest long-poll; cancellation tokens do the fine control.
         _http = handler is null
             ? new HttpClient(CreateHandler(), disposeHandler: true)
@@ -179,20 +206,26 @@ public sealed class TelegramClient : ITelegramClient, IDisposable
 
     public async Task<long?> SendMessageAsync(long chatId, string text, TgInlineKeyboardMarkup? keyboard = null, CancellationToken ct = default)
     {
+        // Split first, decorate second. The splitter reasons about markup it can see,
+        // and a custom emoji tag is fifty characters wrapped round one — expanding
+        // before the split would move every boundary and could put a tag across two
+        // messages. Telegram counts a message after its entities are parsed anyway,
+        // so the tags cost nothing against the limit.
         var chunks = TextUtil.SplitForTelegram(text, ChunkLength);
         long? lastId = null;
         for (var i = 0; i < chunks.Count; i++)
         {
             var isLast = i == chunks.Count - 1;
-            var payload = new
-            {
-                chat_id = chatId,
-                text = chunks[i],
-                parse_mode = "HTML",
-                disable_web_page_preview = true,
-                reply_markup = isLast ? keyboard : null,
-            };
-            var msg = await PostJsonAsync<TgMessage>("sendMessage", payload, ct).ConfigureAwait(false);
+            var markup = isLast ? keyboard : null;
+            var msg = await SendDecoratedAsync("sendMessage", chunks[i], markup,
+                (body, reply) => new
+                {
+                    chat_id = chatId,
+                    text = body,
+                    parse_mode = "HTML",
+                    disable_web_page_preview = true,
+                    reply_markup = reply,
+                }, ct).ConfigureAwait(false);
             lastId = msg?.MessageId;
         }
         return lastId;
@@ -200,32 +233,32 @@ public sealed class TelegramClient : ITelegramClient, IDisposable
 
     public async Task<long?> SendWithMarkupAsync(long chatId, string text, object? replyMarkup, CancellationToken ct = default)
     {
-        var payload = new
-        {
-            chat_id = chatId,
-            text = TextUtil.Clip(text, MaxMessageLength),
-            parse_mode = "HTML",
-            disable_web_page_preview = true,
-            reply_markup = replyMarkup,
-        };
-        var msg = await PostJsonAsync<TgMessage>("sendMessage", payload, ct).ConfigureAwait(false);
+        var msg = await SendDecoratedAsync("sendMessage", TextUtil.Clip(text, MaxMessageLength), replyMarkup,
+            (body, reply) => new
+            {
+                chat_id = chatId,
+                text = body,
+                parse_mode = "HTML",
+                disable_web_page_preview = true,
+                reply_markup = reply,
+            }, ct).ConfigureAwait(false);
         return msg?.MessageId;
     }
 
     public async Task<bool> EditMessageAsync(long chatId, long messageId, string text, TgInlineKeyboardMarkup? keyboard, CancellationToken ct = default)
     {
-        var payload = new
-        {
-            chat_id = chatId,
-            message_id = messageId,
-            text = TextUtil.Clip(text, MaxMessageLength),
-            parse_mode = "HTML",
-            disable_web_page_preview = true,
-            reply_markup = keyboard,
-        };
         try
         {
-            await PostJsonAsync<TgMessage>("editMessageText", payload, ct).ConfigureAwait(false);
+            await SendDecoratedAsync("editMessageText", TextUtil.Clip(text, MaxMessageLength), keyboard,
+                (body, reply) => new
+                {
+                    chat_id = chatId,
+                    message_id = messageId,
+                    text = body,
+                    parse_mode = "HTML",
+                    disable_web_page_preview = true,
+                    reply_markup = reply,
+                }, ct).ConfigureAwait(false);
             return true;
         }
         catch (TelegramApiException ex) when (ex.Description?.Contains("not modified", StringComparison.OrdinalIgnoreCase) == true)
@@ -236,10 +269,36 @@ public sealed class TelegramClient : ITelegramClient, IDisposable
     }
 
     public Task SendPhotoAsync(long chatId, byte[] photo, string fileName, string? caption = null, CancellationToken ct = default)
-        => SendFileAsync("sendPhoto", "photo", chatId, photo, fileName, caption, "image/png", ct);
+        => SendFileWithFallbackAsync("sendPhoto", "photo", chatId, photo, fileName, caption, "image/png", ct);
 
     public Task SendDocumentAsync(long chatId, byte[] file, string fileName, string? caption = null, CancellationToken ct = default)
-        => SendFileAsync("sendDocument", "document", chatId, file, fileName, caption, "application/octet-stream", ct);
+        => SendFileWithFallbackAsync("sendDocument", "document", chatId, file, fileName, caption, "application/octet-stream", ct);
+
+    /// <summary>
+    /// Uploads once with the caption decorated, and again plain if Telegram refuses it
+    /// over a custom emoji.
+    ///
+    /// A 400 is not transient, so the retry loop will not touch it: without this, one
+    /// bad identifier in the map turns every screenshot into an error message. The
+    /// upload is repeated in full because a caption cannot be edited onto a message
+    /// that was never accepted, and a screenshot the user asked for matters rather
+    /// more than the bytes.
+    /// </summary>
+    private async Task SendFileWithFallbackAsync(string method, string field, long chatId, byte[] data,
+        string fileName, string? caption, string contentType, CancellationToken ct)
+    {
+        try
+        {
+            await SendFileAsync(method, field, chatId, data, fileName, caption, contentType, ct, decorate: true)
+                .ConfigureAwait(false);
+        }
+        catch (TelegramApiException ex) when (IsCustomEmojiRefusal(ex))
+        {
+            _emoji?.ReportRejected(ex.Description);
+            await SendFileAsync(method, field, chatId, data, fileName, caption, contentType, ct, decorate: false)
+                .ConfigureAwait(false);
+        }
+    }
 
     public async Task AnswerCallbackAsync(string callbackId, string? text = null, bool showAlert = false, CancellationToken ct = default)
     {
@@ -292,6 +351,26 @@ public sealed class TelegramClient : ITelegramClient, IDisposable
         }
     }
 
+    public async Task<IReadOnlyList<TgSticker>> GetCustomEmojiStickersAsync(
+        IReadOnlyList<string> ids, CancellationToken ct = default)
+    {
+        if (ids is null || ids.Count == 0)
+            return Array.Empty<TgSticker>();
+
+        // Telegram takes 200 at a time and answers a longer list with an error rather
+        // than a short result, so the cap is honoured here instead of being discovered.
+        var wanted = ids.Take(MaxCustomEmojiLookup).ToArray();
+        var stickers = await PostJsonAsync<List<TgSticker>>(
+            "getCustomEmojiStickers", new { custom_emoji_ids = wanted }, ct).ConfigureAwait(false);
+        return stickers ?? (IReadOnlyList<TgSticker>)Array.Empty<TgSticker>();
+    }
+
+    public async Task<TgStickerSet> GetStickerSetAsync(string name, CancellationToken ct = default)
+    {
+        var set = await PostJsonAsync<TgStickerSet>("getStickerSet", new { name }, ct).ConfigureAwait(false);
+        return set ?? throw new InvalidOperationException("Telegram returned no sticker set by that name.");
+    }
+
     public async Task<TgFile> GetFileAsync(string fileId, CancellationToken ct = default)
     {
         var file = await PostJsonAsync<TgFile>("getFile", new { file_id = fileId }, ct).ConfigureAwait(false);
@@ -326,7 +405,8 @@ public sealed class TelegramClient : ITelegramClient, IDisposable
         return buffer.ToArray();
     }
 
-    private async Task SendFileAsync(string method, string field, long chatId, byte[] data, string fileName, string? caption, string contentType, CancellationToken ct)
+    private async Task SendFileAsync(string method, string field, long chatId, byte[] data, string fileName,
+        string? caption, string contentType, CancellationToken ct, bool decorate = true)
     {
         if (data.LongLength > MaxUploadBytes)
             throw new InvalidOperationException(
@@ -339,7 +419,11 @@ public sealed class TelegramClient : ITelegramClient, IDisposable
             form.Add(new StringContent(chatId.ToString(System.Globalization.CultureInfo.InvariantCulture)), "chat_id");
             if (!string.IsNullOrEmpty(caption))
             {
-                form.Add(new StringContent(TextUtil.Clip(caption, MaxCaptionLength), Encoding.UTF8), "caption");
+                // Captions carry entities exactly as message text does, so a screenshot
+                // gets the same emoji as the panel that asked for it.
+                var clipped = TextUtil.Clip(caption, MaxCaptionLength);
+                var text = decorate ? _emoji?.Decorate(clipped) ?? clipped : clipped;
+                form.Add(new StringContent(text, Encoding.UTF8), "caption");
                 form.Add(new StringContent("HTML"), "parse_mode");
             }
             var fileContent = new ByteArrayContent(data);
@@ -354,6 +438,47 @@ public sealed class TelegramClient : ITelegramClient, IDisposable
             return (object?)null;
         }, SendAttempts, ct).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Sends one message-shaped call with the user's premium emoji applied, and falls
+    /// back to the plain version if Telegram will not take it.
+    ///
+    /// Two different failures are covered, because Telegram has two ways of saying no.
+    /// A malformed identifier is a hard 400, which is caught here and answered by
+    /// resending the undecorated text — a reply the user was waiting for must not be
+    /// lost to a cosmetic setting. A bot that simply is not entitled to custom emoji
+    /// gets no error at all: the message goes through with its entities quietly
+    /// removed, which is why the echoed message is handed to the styler to read.
+    /// </summary>
+    /// <param name="build">Builds the request body from the text and markup to send.</param>
+    private async Task<TgMessage?> SendDecoratedAsync(
+        string method, string text, object? markup,
+        Func<string, object?, object> build, CancellationToken ct)
+    {
+        var decoratedText = _emoji?.Decorate(text) ?? text;
+        var decoratedMarkup = _emoji?.DecorateMarkup(markup) ?? markup;
+        var changed = !ReferenceEquals(decoratedText, text) || !ReferenceEquals(decoratedMarkup, markup);
+
+        try
+        {
+            var msg = await PostJsonAsync<TgMessage>(method, build(decoratedText, decoratedMarkup), ct)
+                .ConfigureAwait(false);
+            if (changed)
+                _emoji?.Observe(decoratedText, msg);
+            return msg;
+        }
+        catch (TelegramApiException ex) when (changed && IsCustomEmojiRefusal(ex))
+        {
+            _emoji?.ReportRejected(ex.Description);
+            return await PostJsonAsync<TgMessage>(method, build(text, markup), ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>True when Telegram refused the call over a custom emoji rather than the content.</summary>
+    private static bool IsCustomEmojiRefusal(TelegramApiException ex) =>
+        ex.Description is { Length: > 0 } d
+        && (d.Contains("custom emoji", StringComparison.OrdinalIgnoreCase)
+            || d.Contains("tg-emoji", StringComparison.OrdinalIgnoreCase));
 
     private async Task<T?> PostJsonAsync<T>(string method, object payload, CancellationToken ct, int attempts = SendAttempts)
     {

@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 using SoulRemote.Localization;
 
 namespace SoulRemote.Models;
@@ -110,6 +110,40 @@ public sealed class AppSettings
     /// <summary>Where files received from Telegram are written. Empty means the default Downloads folder.</summary>
     public string DownloadFolder { get; set; } = string.Empty;
 
+    // ---- Premium emoji ----
+
+    /// <summary>
+    /// Whether the bot dresses its messages in the custom emoji mapped below. Kept
+    /// separate from the map so turning the look off, and back on, does not mean
+    /// setting every emoji up again.
+    /// </summary>
+    public bool UsePremiumEmoji { get; set; } = true;
+
+    /// <summary>
+    /// Which Telegram custom ("premium") emoji stands in for each of the bot's own,
+    /// keyed by the ordinary emoji and holding the custom emoji's identifier:
+    /// <c>{ "📸": "5368324170671202286" }</c>.
+    ///
+    /// Keyed by the character rather than by a name for the screen it appears on,
+    /// because that is what the substitution actually matches, and because it is the
+    /// one key that cannot go stale: rename a screen, move an emoji to another menu,
+    /// and the mapping still lands. Telegram also requires the entity to wrap exactly
+    /// the emoji the custom one stands for, so the key is what makes an entry valid
+    /// as well as what finds it.
+    ///
+    /// Lives here, in %APPDATA%\SoulRemote\settings.json, so it travels with the
+    /// roaming profile and is one save away from both the desktop window and the bot.
+    /// </summary>
+    public Dictionary<string, string> PremiumEmoji { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The emoji pack the map was last filled from, e.g. "MyAnimatedEmoji". Purely a
+    /// label — the identifiers above are what the bot sends — but it is what lets both
+    /// settings screens say where the current look came from, and re-import it later
+    /// without asking the user to find the pack again.
+    /// </summary>
+    public string PremiumEmojiPack { get; set; } = string.Empty;
+
     [JsonIgnore]
     public AppLanguage LanguageOrDefault => AppLanguageExtensions.Parse(Language);
 
@@ -144,6 +178,33 @@ public sealed class AppSettings
         var live = AuthorizedChatIds.Select(id => id.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToHashSet();
         foreach (var stale in ChatNames.Keys.Where(k => !live.Contains(k)).ToArray())
             ChatNames.Remove(stale);
+
+        NormalizePremiumEmoji();
+    }
+
+    /// <summary>
+    /// Throws out emoji mappings Telegram would refuse.
+    ///
+    /// Only the identifier is judged, never the emoji it is filed under. An id that
+    /// is not a number is an error every time it is sent, so it goes; but an emoji
+    /// this build happens not to use any more is merely inert, and a release that
+    /// reworded one string is no reason to quietly delete part of an imported pack
+    /// the user may still be using on the version they roll back to.
+    /// </summary>
+    private void NormalizePremiumEmoji()
+    {
+        // A file holding "premiumEmoji": null deserialises to a null dictionary; the
+        // rest of the app is entitled to assume there is always one to read.
+        PremiumEmoji ??= new Dictionary<string, string>(StringComparer.Ordinal);
+        PremiumEmojiPack = (PremiumEmojiPack ?? string.Empty).Trim();
+
+        var cleaned = new Dictionary<string, string>(PremiumEmoji.Count, StringComparer.Ordinal);
+        foreach (var (emoji, id) in PremiumEmoji)
+        {
+            if (!string.IsNullOrEmpty(emoji) && Services.EmojiText.IsValidCustomEmojiId(id))
+                cleaned[emoji] = id.Trim();
+        }
+        PremiumEmoji = cleaned;
     }
 
     public AppSettings Clone()
@@ -176,6 +237,9 @@ public sealed class AppSettings
             AutoInstallUpdates = AutoInstallUpdates,
             LogRetentionDays = LogRetentionDays,
             DownloadFolder = DownloadFolder,
+            UsePremiumEmoji = UsePremiumEmoji,
+            PremiumEmoji = new Dictionary<string, string>(PremiumEmoji, StringComparer.Ordinal),
+            PremiumEmojiPack = PremiumEmojiPack,
         };
     }
 }

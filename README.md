@@ -26,7 +26,7 @@ reachable, so the bot keeps working.
 | **Processes** | List top processes, kill by name or PID |
 | **Input & clipboard** | Read/set the clipboard, type into the focused window, open a URL or file, speak text aloud |
 | **Files** | Browse folders, fetch a file to Telegram, send a file to the PC (opt‑in) |
-| **Settings** | App permissions, startup, bot preferences, paired chats, and Windows' own power plan / brightness / Wi‑Fi / Bluetooth |
+| **Settings** | App permissions, startup, bot preferences, premium emoji, paired chats, and Windows' own power plan / brightness / Wi‑Fi / Bluetooth |
 | **Advanced** | Run shell commands via `/cmd` (opt‑in), inline‑button menus |
 
 - ⚡ **One‑press bring‑up** — paste both tokens and press **Connect**: Soul Remote
@@ -36,6 +36,11 @@ reachable, so the bot keeps working.
 - 🎛 **Purpose‑built console UI** — a live **relay line** shows the three hops
   (this PC → Cloudflare edge → Telegram); traffic only animates along a conduit
   while that hop is actually carrying it.
+- ✨ **Wears your premium emoji** — point it at any Telegram emoji pack and every
+  emoji the bot uses that the pack has a version of is converted at once, on the
+  buttons as well as in the text. Send a pack link from the phone, or paste one into
+  the desktop window; the mapping is stored in `%APPDATA%` with the rest of your
+  settings, so both sides show the same thing.
 - 🔐 **Secure by default** — tokens encrypted at rest with Windows DPAPI, a
   chat‑ID **whitelist**, a single‑use **pairing code** (rate‑limited, compared in
   constant time), and a shared secret so the deployed worker is not an open relay.
@@ -313,6 +318,25 @@ find.
 ۴. در **Dashboard** کد جفت‌سازی را ببینید و در تلگرام `/pair <کد>` را بفرستید
    (کد یک‌بارمصرف است و پس از ۱۰ دقیقه منقضی می‌شود؛ فقط در چت خصوصی پذیرفته می‌شود).
 ۵. حالا `/menu` را بفرستید و سیستم را کنترل کنید.
+
+### ایموجی پرمیوم
+بات می‌تواند به‌جای ایموجی‌های معمولی، ایموجی پرمیوم تلگرام نشان بدهد — هم در متن
+پیام‌ها و هم روی خود دکمه‌ها.
+
+- **در تلگرام:** `/emoji` را بفرستید (یا **Settings ← ایموجی پرمیوم**). روی «تبدیل همه
+  با یک بسته» بزنید و پیوند بستهٔ ایموجی (`t.me/addemoji/...`) یا فقط یکی از ایموجی‌های
+  آن بسته را بفرستید. هرچه از ایموجی‌های بات که آن بسته نسخه‌اش را داشته باشد یک‌جا
+  تبدیل می‌شود، و پیام می‌گوید چندتا از چندتا.
+- **در پنجرهٔ ویندوز:** **Settings ← ایموجی پرمیوم**، نام یا پیوند بسته را جای‌گذاری
+  کنید. فهرست همهٔ ایموجی‌های بات همان‌جاست؛ روی هرکدام که تبدیل شده بزنید تا برگردد.
+- هر ایموجی پرمیوم فقط می‌تواند جای همان ایموجی معمولی بنشیند که نسخه‌ای از آن است —
+  این قانون خود تلگرام است، نه انتخاب برنامه.
+- نگاشت کنار بقیهٔ تنظیمات در `%APPDATA%\SoulRemote\settings.json` ذخیره می‌شود، پس
+  پنجره و بات همیشه یک چیز را نشان می‌دهند.
+- تلگرام اجازهٔ ارسال ایموجی پرمیوم را فقط به باتی می‌دهد که مالکش **تلگرام پرمیوم**
+  داشته باشد، یا خودش نام کاربری اضافه‌ای از **Fragment** خریده باشد. اگر این‌طور نباشد
+  تلگرام بی‌صدا آن‌ها را حذف می‌کند — برنامه این را از پاسخ تلگرام می‌فهمد و در همان
+  صفحه به شما می‌گوید، و ایموجی‌های ساده سر جایشان می‌مانند.
 
 ### زبان فارسی
 تمام برنامه — هم پنجرهٔ ویندوز و هم خودِ بات — فارسی صحبت می‌کند. برای تغییر زبان

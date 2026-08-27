@@ -36,6 +36,19 @@ public enum PromptKind
 
     /// <summary>A friendlier label for a paired chat. Carries the chat id as its argument.</summary>
     RenameChat,
+
+    /// <summary>An emoji pack to convert the whole bot with — a link, a name, or one emoji from it.</summary>
+    EmojiPack,
+
+    /// <summary>Premium emoji to adopt, each standing in for the ordinary one it is a version of.</summary>
+    PremiumEmoji,
+
+    /// <summary>
+    /// The premium version of one particular emoji. Carries that emoji's index in the
+    /// catalogue as its argument, because the answer arrives as a plain message with
+    /// nothing to say which button asked for it.
+    /// </summary>
+    PremiumEmojiFor,
 }
 
 /// <summary>
@@ -83,7 +96,8 @@ public sealed class ChatPrompts
     /// <summary>The kinds that write settings, and so answer to the remote-settings switch.</summary>
     public static bool IsSettingsPrompt(PromptKind kind) => kind
         is PromptKind.PollTimeout or PromptKind.LogRetention or PromptKind.DownloadFolder
-        or PromptKind.Brightness or PromptKind.RenameChat;
+        or PromptKind.Brightness or PromptKind.RenameChat
+        or PromptKind.EmojiPack or PromptKind.PremiumEmoji or PromptKind.PremiumEmojiFor;
 
     public static string PromptFor(PromptKind kind) => Strings.Get(kind switch
     {
@@ -100,6 +114,9 @@ public sealed class ChatPrompts
         PromptKind.DownloadFolder => "bot.prompt.folder",
         PromptKind.Brightness => "bot.prompt.brightness",
         PromptKind.RenameChat => "bot.prompt.rename",
+        PromptKind.EmojiPack => "bot.prompt.emojipack",
+        PromptKind.PremiumEmoji => "bot.prompt.premiumemoji",
+        PromptKind.PremiumEmojiFor => "bot.prompt.premiumemojifor",
         _ => "bot.prompt.generic",
     });
 
@@ -115,6 +132,8 @@ public sealed class ChatPrompts
         PromptKind.DownloadFolder => "bot.placeholder.folder",
         PromptKind.Brightness => "bot.placeholder.brightness",
         PromptKind.RenameChat => "bot.placeholder.rename",
+        PromptKind.EmojiPack => "bot.placeholder.emojipack",
+        PromptKind.PremiumEmoji or PromptKind.PremiumEmojiFor => "bot.placeholder.premiumemoji",
         _ => "bot.placeholder.generic",
     });
 }

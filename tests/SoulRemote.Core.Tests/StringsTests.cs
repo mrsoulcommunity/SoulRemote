@@ -43,7 +43,7 @@ public sealed class StringsTests
             "bot.files.folder", "bot.files.file",
             // Literals a user types verbatim; translating them would break the example.
             "bot.placeholder.open", "bot.placeholder.shell", "bot.placeholder.path",
-            "bot.placeholder.folder",
+            "bot.placeholder.folder", "bot.placeholder.emojipack",
             // The language picker names each language in that language, in both
             // directions — someone who cannot read the current one has to find theirs.
             "ui.settings.english", "ui.settings.persian",

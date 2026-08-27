@@ -90,6 +90,30 @@ public sealed class FakeTelegram : ITelegramClient
     public Task<TgUser> GetMeAsync(CancellationToken ct = default) =>
         Task.FromResult(new TgUser { Id = 1, IsBot = true, Username = "test_bot" });
 
+    /// <summary>Custom emoji this fake will admit to knowing about, keyed by identifier.</summary>
+    public Dictionary<string, TgSticker> CustomEmoji { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Sticker sets this fake will hand back, keyed by name.</summary>
+    public Dictionary<string, TgStickerSet> StickerSets { get; } = new(StringComparer.Ordinal);
+
+    public List<string[]> CustomEmojiLookups { get; } = new();
+
+    public Task<IReadOnlyList<TgSticker>> GetCustomEmojiStickersAsync(
+        IReadOnlyList<string> ids, CancellationToken ct = default)
+    {
+        CustomEmojiLookups.Add(ids.ToArray());
+        IReadOnlyList<TgSticker> found = ids
+            .Where(CustomEmoji.ContainsKey)
+            .Select(id => CustomEmoji[id])
+            .ToArray();
+        return Task.FromResult(found);
+    }
+
+    public Task<TgStickerSet> GetStickerSetAsync(string name, CancellationToken ct = default) =>
+        StickerSets.TryGetValue(name, out var set)
+            ? Task.FromResult(set)
+            : throw new InvalidOperationException($"No sticker set named '{name}'.");
+
     public Task DeleteWebhookAsync(CancellationToken ct = default) => Task.CompletedTask;
 
     public Task<List<TgUpdate>> GetUpdatesAsync(long offset, int timeoutSeconds, CancellationToken ct = default) =>

@@ -26,6 +26,7 @@ reachable, so the bot keeps working.
 | **Processes** | List top processes, kill by name or PID |
 | **Input & clipboard** | Read/set the clipboard, type into the focused window, open a URL or file, speak text aloud |
 | **Files** | Browse folders, fetch a file to Telegram, send a file to the PC (opt‑in) |
+| **Settings** | App permissions, startup, bot preferences, paired chats, and Windows' own power plan / brightness / Wi‑Fi / Bluetooth |
 | **Advanced** | Run shell commands via `/cmd` (opt‑in), inline‑button menus |
 
 - ⚡ **One‑press bring‑up** — paste both tokens and press **Connect**: Soul Remote
@@ -38,6 +39,12 @@ reachable, so the bot keeps working.
 - 🔐 **Secure by default** — tokens encrypted at rest with Windows DPAPI, a
   chat‑ID **whitelist**, a single‑use **pairing code** (rate‑limited, compared in
   constant time), and a shared secret so the deployed worker is not an open relay.
+- ⚙️ **Configurable from the phone in your hand** — a **Settings** section in the
+  bot covers what the desktop window covers: the permission switches (each behind a
+  confirmation), startup and update behaviour, renaming and revoking paired chats, and
+  Windows' own power plan, brightness, Wi‑Fi and Bluetooth. One desktop switch makes
+  the whole section read‑only — it is the one thing Telegram cannot reach, so it stays
+  a way back if a paired chat is ever taken over.
 - 🧊 **Runs in the tray** — keeps working in the background; optional start with
   Windows and auto‑start of the bot.
 - ⬆️ **Updates itself** — checks GitHub a few seconds after launch, tells you once
@@ -202,8 +209,10 @@ The `.sha256` files are part of the product, not a courtesy: the in-app updater 
 not run an installer whose published checksum it cannot match, so a release without
 them is a release nobody updates to.
 
-Requires the **.NET 8 SDK**. The desktop app targets `net8.0-windows`, but
-`SoulRemote.Core` and the test suite are plain `net8.0` — so `dotnet test` runs
+Requires the **.NET 8 SDK**. The desktop app targets `net8.0-windows10.0.19041.0` —
+the version-pinned TFM is what makes the WinRT projections reachable, which is how the
+Bluetooth radio is switched — so it needs **Windows 10 version 2004 or newer** to run.
+`SoulRemote.Core` and the test suite are plain `net8.0`, so `dotnet test` runs
 anywhere, and the app itself can be built off Windows with
 `-p:EnableWindowsTargeting=true`.
 
@@ -231,6 +240,13 @@ find.
   Settings: `/cmd` (arbitrary shell), file browsing and fetching, and typing into
   the focused window. The last one is gated because synthetic keystrokes into a
   focused terminal reach the same place a shell command does.
+- Those three switches can be changed from the bot's **Settings** section, each
+  behind a confirmation. That is a real trade‑off, so it has a brake: **Let a paired
+  chat change settings from Telegram** — on by default — makes the whole section
+  read‑only when you turn it off. It is deliberately the one switch the bot cannot
+  reach, so a chat that has been taken over cannot turn it back on, and the desktop
+  keeps the last word. If you leave a machine unattended for a long stretch, turning
+  it off costs you nothing you cannot undo at the keyboard.
 - What is *not* encrypted in `settings.json`: the paired chat IDs and their
   names, the bot handle, and the worker URL. Anyone who can read that file learns
   who can drive this machine, without needing the tokens.

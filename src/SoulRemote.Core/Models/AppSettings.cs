@@ -59,6 +59,15 @@ public sealed class AppSettings
     /// </summary>
     public bool AllowInputInjection { get; set; } = false;
 
+    /// <summary>
+    /// Whether a paired chat may change settings from Telegram, or only use them.
+    /// On by default, because a bot you cannot configure from the phone you are
+    /// holding is the case this app exists for. Turning it off is the way back: it
+    /// is the one switch the bot cannot reach, so a chat that has been taken over
+    /// cannot undo it, and the desktop owner always has the last word.
+    /// </summary>
+    public bool AllowRemoteSettings { get; set; } = true;
+
     /// <summary>Launch Soul Remote automatically when the user signs in.</summary>
     public bool StartWithWindows { get; set; } = false;
 
@@ -155,6 +164,7 @@ public sealed class AppSettings
             AllowShellCommands = AllowShellCommands,
             AllowFileAccess = AllowFileAccess,
             AllowInputInjection = AllowInputInjection,
+            AllowRemoteSettings = AllowRemoteSettings,
             StartWithWindows = StartWithWindows,
             AutoStartBot = AutoStartBot,
             StartMinimized = StartMinimized,

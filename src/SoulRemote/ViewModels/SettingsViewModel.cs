@@ -1,4 +1,4 @@
-﻿using SoulRemote.Localization;
+using SoulRemote.Localization;
 using SoulRemote.Services;
 
 namespace SoulRemote.ViewModels;
@@ -22,6 +22,12 @@ public sealed class SettingsViewModel : ViewModelBase
         _services = services;
         Update = update;
         Load();
+
+        // The bot can change every one of these from Telegram now, so this page can no
+        // longer assume it is the only writer. Settings.Changed already fires after
+        // every successful save; without listening to it, a toggle flipped from a phone
+        // would leave this window showing the old position until it was rebuilt.
+        _services.Settings.Changed += OnSettingsChanged;
         OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
         OpenSettingsFileCommand = new RelayCommand(OpenSettingsFolder);
         SetLanguageCommand = new RelayCommand(p => SetLanguage(p as string));
@@ -45,6 +51,19 @@ public sealed class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsPersian));
         _ = _services.Bot.RefreshCommandListAsync();
     }
+
+    /// <summary>
+    /// Re-reads everything after a save that did not come from this page. Raised on a
+    /// background thread by the settings service, so it is marshalled before it
+    /// touches anything bound to the window.
+    /// </summary>
+    private void OnSettingsChanged(Models.AppSettings settings) => UiThread.Post(() =>
+    {
+        Load();
+        // Load() writes the backing fields directly, so every property is re-read at
+        // once rather than each setter being told individually.
+        OnPropertyChanged(string.Empty);
+    });
 
     /// <summary>Re-reads the chips after the language changed somewhere else — the bot menu.</summary>
     public void NotifyLanguageChanged()
@@ -72,6 +91,7 @@ public sealed class SettingsViewModel : ViewModelBase
         _allowShellCommands = s.AllowShellCommands;
         _allowFileAccess = s.AllowFileAccess;
         _allowInputInjection = s.AllowInputInjection;
+        _allowRemoteSettings = s.AllowRemoteSettings;
         _reduceMotion = s.ReduceMotion;
         _pollTimeoutSeconds = s.PollTimeoutSeconds <= 0 ? 25 : s.PollTimeoutSeconds;
         _logRetentionDays = s.LogRetentionDays;
@@ -150,6 +170,13 @@ public sealed class SettingsViewModel : ViewModelBase
     {
         get => _allowInputInjection;
         set { if (SetProperty(ref _allowInputInjection, value)) Persist(s => s.AllowInputInjection = value); }
+    }
+
+    private bool _allowRemoteSettings;
+    public bool AllowRemoteSettings
+    {
+        get => _allowRemoteSettings;
+        set { if (SetProperty(ref _allowRemoteSettings, value)) Persist(s => s.AllowRemoteSettings = value); }
     }
 
     private bool _reduceMotion;

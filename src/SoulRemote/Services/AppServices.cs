@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using SoulRemote.Abstractions;
 using SoulRemote.Localization;
 using SoulRemote.Platform;
@@ -23,6 +23,7 @@ public sealed class AppServices
     public IScreenshotService Screenshot { get; }
     public ISystemInfoService Info { get; }
     public IStartupManager Startup { get; }
+    public IPcSettingsService PcSettings { get; }
     public IAppUpdateService Updates { get; }
     public IUpdateInstaller Installer { get; }
     public UpdateCoordinator UpdateCoordinator { get; }
@@ -51,6 +52,7 @@ public sealed class AppServices
         Screenshot = new ScreenshotService();
         Info = new SystemInfoService(Log, Settings, Cloudflare);
         Startup = new StartupManager(Log);
+        PcSettings = new PcSettingsService(Log);
 
         // The updater is given the assembly version rather than a constant, so the
         // number it compares against GitHub is the one the build actually stamped.
@@ -58,7 +60,10 @@ public sealed class AppServices
         Installer = new UpdateInstaller(Log);
         UpdateCoordinator = new UpdateCoordinator(Updates, Installer, Settings, Log);
 
-        Router = new CommandRouter(Settings, Telegram, System, Screenshot, Info, Log);
+        // The router is handed the startup manager and the Windows-settings service
+        // as well, because the bot's Settings section writes through both.
+        Router = new CommandRouter(Settings, Telegram, System, Screenshot, Info, Log,
+            clock: null, pc: PcSettings, startup: Startup);
         Bot = new BotEngine(Settings, Telegram, Router, Log);
         Orchestrator = new ConnectionOrchestrator(Settings, Cloudflare, Telegram, Bot, Log, WpfDispatcher.Instance);
     }

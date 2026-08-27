@@ -146,6 +146,7 @@ public sealed class BotEngine
         ("clipboard", Strings.Get("cmd.clipboard")),
         ("cancel", Strings.Get("cmd.cancel")),
         ("lang", Strings.Get("cmd.lang")),
+        ("settings", Strings.Get("cmd.settings")),
         ("ping", Strings.Get("cmd.ping")),
     };
 

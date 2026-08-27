@@ -67,8 +67,10 @@ public sealed class FakeSettings : ISettingsService
 /// <summary>Records every call the router makes, and can be told to fail on demand.</summary>
 public sealed class FakeTelegram : ITelegramClient
 {
-    public sealed record Sent(long ChatId, string Text, bool HasKeyboard, IReadOnlyList<string> Buttons);
-    public sealed record Edited(long ChatId, long MessageId, string Text, IReadOnlyList<string> Buttons);
+    public sealed record Sent(long ChatId, string Text, bool HasKeyboard, IReadOnlyList<string> Buttons,
+                              IReadOnlyList<string> Payloads);
+    public sealed record Edited(long ChatId, long MessageId, string Text, IReadOnlyList<string> Buttons,
+                                IReadOnlyList<string> Payloads);
     public sealed record Answered(string CallbackId, string? Text, bool Alert);
     public sealed record File(long ChatId, string Name, int Bytes, bool IsPhoto);
 
@@ -95,13 +97,14 @@ public sealed class FakeTelegram : ITelegramClient
 
     public Task<long?> SendMessageAsync(long chatId, string text, TgInlineKeyboardMarkup? keyboard = null, CancellationToken ct = default)
     {
-        Messages.Add(new Sent(chatId, text, keyboard is not null, Captions(keyboard)));
+        Messages.Add(new Sent(chatId, text, keyboard is not null, Captions(keyboard), Payloads(keyboard)));
         return Task.FromResult<long?>(Messages.Count);
     }
 
     public Task<long?> SendWithMarkupAsync(long chatId, string text, object? replyMarkup, CancellationToken ct = default)
     {
-        Messages.Add(new Sent(chatId, text, replyMarkup is not null, Captions(replyMarkup as TgInlineKeyboardMarkup)));
+        Messages.Add(new Sent(chatId, text, replyMarkup is not null,
+            Captions(replyMarkup as TgInlineKeyboardMarkup), Payloads(replyMarkup as TgInlineKeyboardMarkup)));
         return Task.FromResult<long?>(Messages.Count);
     }
 
@@ -109,7 +112,7 @@ public sealed class FakeTelegram : ITelegramClient
     {
         if (EditFailure is not null)
             throw EditFailure;
-        Edits.Add(new Edited(chatId, messageId, text, Captions(keyboard)));
+        Edits.Add(new Edited(chatId, messageId, text, Captions(keyboard), Payloads(keyboard)));
         return Task.FromResult(true);
     }
 
@@ -150,6 +153,16 @@ public sealed class FakeTelegram : ITelegramClient
         keyboard is null
             ? Array.Empty<string>()
             : keyboard.InlineKeyboard.SelectMany(row => row).Select(b => b.Text).ToArray();
+
+    /// <summary>
+    /// The callback payloads, which is what a test that cares about behaviour should
+    /// assert on: captions are translated, payloads are protocol and never change.
+    /// </summary>
+    private static IReadOnlyList<string> Payloads(TgInlineKeyboardMarkup? keyboard) =>
+        keyboard is null
+            ? Array.Empty<string>()
+            : keyboard.InlineKeyboard.SelectMany(row => row)
+                .Select(b => b.CallbackData ?? string.Empty).ToArray();
 }
 
 /// <summary>Every control action, recorded rather than performed.</summary>
@@ -227,4 +240,97 @@ public sealed class FakeInfo : ISystemInfoService
     public string GetBattery() => Report("battery");
     public string GetTopProcesses(int count = 12) => Report("processes");
     public Task<string> GetNetworkAsync(CancellationToken ct = default) => Task.FromResult(Report("network"));
+}
+
+/// <summary>Records what the sign-in entry was told, so the pair of writes can be checked.</summary>
+public sealed class FakeStartup : IStartupManager
+{
+    public bool Enabled { get; private set; }
+    public List<bool> Calls { get; } = new();
+
+    public bool IsEnabled() => Enabled;
+
+    public void SetEnabled(bool enabled)
+    {
+        Calls.Add(enabled);
+        Enabled = enabled;
+    }
+}
+
+/// <summary>
+/// A machine whose Windows settings can be inspected and driven from a test. Shaped
+/// like FakeSystem: every call is recorded, and Failure makes the whole surface throw
+/// so the "this subsystem is unreadable" paths can be exercised.
+/// </summary>
+public sealed class FakePcSettings : IPcSettingsService
+{
+    public const string BalancedId = "381b4222-f694-41f0-9685-ff5bb260df2e";
+    public const string SaverId = "a1841308-3541-4fab-bc81-f71556f20b4a";
+
+    public List<string> Calls { get; } = new();
+    public Exception? Failure { get; set; }
+
+    public List<PowerPlan> Plans { get; set; } = new()
+    {
+        new PowerPlan(BalancedId, "Balanced", true),
+        new PowerPlan(SaverId, "Power saver", false),
+    };
+
+    public BrightnessState Brightness { get; set; } = new(true, 50);
+    public WifiState Wifi { get; set; } = new(true, true, "HomeNet");
+    public List<string> Profiles { get; set; } = new() { "HomeNet", "Café Wi-Fi ☕" };
+    public RadioPower Bluetooth { get; set; } = RadioPower.On;
+
+    private T Record<T>(string name, T value)
+    {
+        if (Failure is not null)
+            throw Failure;
+        Calls.Add(name);
+        return value;
+    }
+
+    public Task<IReadOnlyList<PowerPlan>> GetPowerPlansAsync(CancellationToken ct = default)
+        => Task.FromResult(Record("plans", (IReadOnlyList<PowerPlan>)Plans));
+
+    public Task<string> SetPowerPlanAsync(string planId, CancellationToken ct = default)
+    {
+        var result = Record("setplan:" + planId, "plan set");
+        Plans = Plans.Select(p => p with { IsActive = p.Id == planId }).ToList();
+        return Task.FromResult(result);
+    }
+
+    public BrightnessState GetBrightness() => Record("brightness", Brightness);
+
+    public string SetBrightness(int percent)
+    {
+        var result = Record("setbrightness:" + percent, "brightness set");
+        Brightness = new BrightnessState(true, percent);
+        return result;
+    }
+
+    public Task<WifiState> GetWifiAsync(CancellationToken ct = default)
+        => Task.FromResult(Record("wifi", Wifi));
+
+    public Task<IReadOnlyList<string>> GetWifiProfilesAsync(CancellationToken ct = default)
+        => Task.FromResult(Record("wifiprofiles", (IReadOnlyList<string>)Profiles));
+
+    public Task<string> ConnectWifiAsync(string profileName, CancellationToken ct = default)
+        => Task.FromResult(Record("wificonnect:" + profileName, "connecting"));
+
+    public Task<string> DisconnectWifiAsync(CancellationToken ct = default)
+    {
+        var result = Record("wifidisconnect", "disconnected");
+        Wifi = new WifiState(true, false, null);
+        return Task.FromResult(result);
+    }
+
+    public Task<RadioPower> GetBluetoothAsync(CancellationToken ct = default)
+        => Task.FromResult(Record("bluetooth", Bluetooth));
+
+    public Task<string> SetBluetoothAsync(bool on, CancellationToken ct = default)
+    {
+        var result = Record("setbluetooth:" + (on ? "1" : "0"), on ? "bt on" : "bt off");
+        Bluetooth = on ? RadioPower.On : RadioPower.Off;
+        return Task.FromResult(result);
+    }
 }

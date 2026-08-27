@@ -31,8 +31,13 @@ public sealed class CommandRouter
     private readonly ISystemInfoService _info;
     private readonly ILogService _log;
     private readonly IClock _clock;
+    private readonly IPcSettingsService? _pc;
+    private readonly IStartupManager? _startup;
     private readonly ChatPrompts _prompts;
     private readonly FileBrowser _files = new();
+
+    /// <summary>The Wi-Fi profile list each chat is currently looking at.</summary>
+    private readonly ChoiceCache _wifiList = new();
 
     // Paired chats get a generous budget — enough that a person never notices it, low
     // enough that a stuck button cannot queue a hundred shutdowns. Strangers get a
@@ -73,9 +78,18 @@ public sealed class CommandRouter
 
     public int CommandsHandled => _commandsHandled;
 
+    /// <param name="pc">
+    /// Windows' own settings. Null on a build that has no Windows half — the core
+    /// tests, chiefly — and the Windows screen then says so rather than throwing.
+    /// </param>
+    /// <param name="startup">
+    /// Writes the sign-in entry. Null hides the Start-with-Windows toggle instead of
+    /// offering one that would store a flag nothing acts on.
+    /// </param>
     public CommandRouter(
         ISettingsService settings, ITelegramClient telegram, ISystemControlService system,
-        IScreenshotService screenshot, ISystemInfoService info, ILogService log, IClock? clock = null)
+        IScreenshotService screenshot, ISystemInfoService info, ILogService log, IClock? clock = null,
+        IPcSettingsService? pc = null, IStartupManager? startup = null)
     {
         _settings = settings;
         _telegram = telegram;
@@ -84,6 +98,8 @@ public sealed class CommandRouter
         _info = info;
         _log = log;
         _clock = clock ?? SystemClock.Instance;
+        _pc = pc;
+        _startup = startup;
         _prompts = new ChatPrompts(_clock);
         _commandLimit = new RateLimiter(20, TimeSpan.FromSeconds(10), _clock);
         _strangerLimit = new RateLimiter(3, TimeSpan.FromMinutes(1), _clock);
@@ -141,10 +157,14 @@ public sealed class CommandRouter
                 break;
 
             case "c":
-                var (action, question) = ConfirmationFor(value);
-                await _telegram.AnswerCallbackAsync(cb.Id, action, false, ct).ConfigureAwait(false);
-                var confirm = BotMenu.Confirm(value, question);
-                await RenderAsync(chatId, messageId, confirm, ct).ConfigureAwait(false);
+                // A settings confirmation is still a settings write: refuse it here as
+                // well, or the read-only switch would only be enforced one tap later.
+                if (IsSettingsConfirm(value) && !await AllowSettingsWriteAsync(cb.Id, ct).ConfigureAwait(false))
+                    break;
+                var confirm = ConfirmationFor(value, chatId);
+                await _telegram.AnswerCallbackAsync(cb.Id, confirm.Toast, false, ct).ConfigureAwait(false);
+                await RenderAsync(chatId, messageId,
+                    BotMenu.Confirm(value, confirm.Question, confirm.Cancel, confirm.Note), ct).ConfigureAwait(false);
                 break;
 
             case "y":
@@ -165,6 +185,10 @@ public sealed class CommandRouter
                 await RunActionAsync(cb.Id, chatId, value, ct).ConfigureAwait(false);
                 break;
 
+            case "s":
+                await RunSettingsActionAsync(cb.Id, chatId, messageId, value, ct).ConfigureAwait(false);
+                break;
+
             case "l":
                 await SwitchLanguageAsync(cb.Id, chatId, messageId, value, ct).ConfigureAwait(false);
                 break;
@@ -181,7 +205,63 @@ public sealed class CommandRouter
 
     /// <summary>Renders a screen in place when possible, otherwise as a new panel.</summary>
     private async Task ShowScreenAsync(long chatId, long messageId, string screen, CancellationToken ct)
-        => await RenderAsync(chatId, messageId, ScreenFor(chatId, screen), ct).ConfigureAwait(false);
+    {
+        // Most screens are a pure function of the settings we already hold. The four
+        // Windows ones have to ask the machine first, so they are resolved separately
+        // rather than making every caller of ScreenFor asynchronous.
+        var view = await AsyncScreenFor(chatId, screen, ct).ConfigureAwait(false)
+                   ?? ScreenFor(chatId, screen);
+        await RenderAsync(chatId, messageId, view, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The screens that read Windows' own configuration, or null when the key is not
+    /// one of them. Every probe is wrapped: a subsystem that throws produces a screen
+    /// saying so, with a way back, rather than an unhandled failure to render.
+    /// </summary>
+    private async Task<BotMenu.Screen?> AsyncScreenFor(long chatId, string screen, CancellationToken ct)
+    {
+        if (_pc is null || screen is not ("spln" or "sbri" or "swif" or "sblu"))
+            return null;
+
+        var writable = CanWriteSettings;
+        try
+        {
+            switch (screen)
+            {
+                case "spln":
+                    return BotMenu.PowerPlans(await _pc.GetPowerPlansAsync(ct).ConfigureAwait(false), writable);
+
+                case "sbri":
+                    return BotMenu.Brightness(_pc.GetBrightness(), writable);
+
+                case "swif":
+                    var state = await _pc.GetWifiAsync(ct).ConfigureAwait(false);
+                    // Profiles are only listed when they can be acted on, and the list
+                    // is cached as it is rendered so "s:wfc.<i>" has something to mean.
+                    IReadOnlyList<string> profiles = Array.Empty<string>();
+                    if (writable && state.AdapterPresent)
+                    {
+                        profiles = await _pc.GetWifiProfilesAsync(ct).ConfigureAwait(false);
+                        _wifiList.Put(chatId, profiles);
+                    }
+                    return BotMenu.Wifi(state, profiles, writable);
+
+                case "sblu":
+                    return BotMenu.Bluetooth(await _pc.GetBluetoothAsync(ct).ConfigureAwait(false), writable);
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            _log.Warning($"Could not read Windows settings for '{screen}': {ex.Message}");
+            return BotMenu.Unavailable(ex.Message, "m:swin");
+        }
+        return null;
+    }
+
+    /// <summary>Whether the desktop app currently lets a chat change settings.</summary>
+    private bool CanWriteSettings => _settings.Current.AllowRemoteSettings;
 
     /// <summary>
     /// Puts a screen on the chat. Editing the existing panel is preferred so the chat
@@ -210,6 +290,17 @@ public sealed class CommandRouter
     private BotMenu.Screen ScreenFor(long chatId, string screen)
     {
         var settings = _settings.Current;
+        var writable = CanWriteSettings;
+
+        // One paired chat, addressed by its id: "m:sch.<chatId>".
+        if (screen.StartsWith("sch.", StringComparison.Ordinal))
+        {
+            if (!long.TryParse(screen[4..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var target)
+                || !settings.AuthorizedChatIds.Contains(target))
+                return BotMenu.Unavailable(Strings.Get("bot.set.chat.gone"), "m:scht");
+            return BotMenu.Chat(target, settings.NameFor(target), target == chatId, writable);
+        }
+
         return screen switch
         {
             "cap" => BotMenu.Capture(SafeScreenCount()),
@@ -219,6 +310,16 @@ public sealed class CommandRouter
             "sys" => BotMenu.System(),
             "prc" => BotMenu.Processes(settings.AllowShellCommands),
             "fil" => BotMenu.Files(settings.AllowFileAccess),
+            "set" => BotMenu.Settings(writable),
+            "sper" => BotMenu.Permissions(settings, writable),
+            "sst" => BotMenu.Startup(settings, writable, _startup is not null),
+            "sbot" => BotMenu.BotPrefs(settings, writable),
+            "scht" => BotMenu.Chats(settings, chatId, writable),
+            "swin" => BotMenu.WindowsSettings(_pc is not null),
+            // The Windows leaves are resolved by AsyncScreenFor; reaching here means
+            // there is no Windows half, so say that rather than rendering an empty one.
+            "spln" or "sbri" or "swif" or "sblu"
+                => BotMenu.Unavailable(Strings.Get("bot.set.win.unavailable"), "m:set"),
             _ => BotMenu.Home(Environment.MachineName, HomeStatus(), settings.AllowFileAccess),
         };
     }
@@ -263,17 +364,86 @@ public sealed class CommandRouter
         catch { return 1; }
     }
 
-    private static (string toast, string question) ConfirmationFor(string action) => action switch
+    /// <summary>What a confirmation says, and where backing out of it goes.</summary>
+    private readonly record struct Confirmation(string Toast, string Question, string Cancel, string? Note = null);
+
+    /// <summary>
+    /// The confirmations that change settings rather than acting on the machine. They
+    /// answer to the remote-settings switch; the power ones do not.
+    /// </summary>
+    private static bool IsSettingsConfirm(string action) =>
+        action.StartsWith("p.", StringComparison.Ordinal)
+        || action.StartsWith("cr.", StringComparison.Ordinal)
+        || action == "wd";
+
+    private Confirmation ConfirmationFor(string action, long chatId)
     {
-        "sd" => (Strings.Get("bot.confirm.shutdown.toast"), Strings.Get("bot.confirm.shutdown.question")),
-        "rs" => (Strings.Get("bot.confirm.restart.toast"), Strings.Get("bot.confirm.restart.question")),
-        "lo" => (Strings.Get("bot.confirm.signout.toast"), Strings.Get("bot.confirm.signout.question")),
-        "hb" => (Strings.Get("bot.confirm.hibernate.toast"), Strings.Get("bot.confirm.hibernate.question")),
-        _ => (Strings.Get("bot.confirm.generic.toast"), Strings.Get("bot.confirm.generic.question")),
-    };
+        // Permission toggles: "p.<what>.<0|1>". The wording differs by direction —
+        // granting and withdrawing are not the same decision.
+        if (action.StartsWith("p.", StringComparison.Ordinal))
+        {
+            var parts = action.Split('.');
+            var on = parts.Length > 2 && parts[2] == "1";
+            var question = parts[1] switch
+            {
+                "shell" => on ? "bot.confirm.shell.on.question" : "bot.confirm.shell.off.question",
+                "file" => on ? "bot.confirm.files.on.question" : "bot.confirm.files.off.question",
+                "inp" => on ? "bot.confirm.typing.on.question" : "bot.confirm.typing.off.question",
+                _ => "bot.confirm.generic.question",
+            };
+            return new Confirmation(
+                Strings.Get(on ? "bot.confirm.perm.on.toast" : "bot.confirm.perm.off.toast"),
+                Strings.Get(question), "m:sper");
+        }
+
+        if (action.StartsWith("cr.", StringComparison.Ordinal))
+        {
+            var isSelf = long.TryParse(action[3..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)
+                         && id == chatId;
+            var name = id == 0 ? string.Empty : _settings.Current.NameFor(id);
+            return new Confirmation(
+                Strings.Get("bot.confirm.revoke.toast"),
+                Strings.Format(isSelf ? "bot.confirm.revoke.self.question" : "bot.confirm.revoke.question",
+                    TextUtil.Html(name)),
+                "m:scht");
+        }
+
+        if (action == "wd")
+        {
+            // The warning is unconditional. Working out whether *this* adapter carries
+            // the relay means guessing at routing that can change between the guess and
+            // the tap, and a warning that is sometimes absent is worse than one that is
+            // always there: the consequence is unrecoverable either way.
+            return new Confirmation(
+                Strings.Get("bot.confirm.wifi.off.toast"),
+                Strings.Get("bot.confirm.wifi.off.question"),
+                "m:swif",
+                Strings.Get("bot.confirm.wifi.selfwarning"));
+        }
+
+        return action switch
+        {
+            "sd" => new(Strings.Get("bot.confirm.shutdown.toast"), Strings.Get("bot.confirm.shutdown.question"), "m:pwr"),
+            "rs" => new(Strings.Get("bot.confirm.restart.toast"), Strings.Get("bot.confirm.restart.question"), "m:pwr"),
+            "lo" => new(Strings.Get("bot.confirm.signout.toast"), Strings.Get("bot.confirm.signout.question"), "m:pwr"),
+            "hb" => new(Strings.Get("bot.confirm.hibernate.toast"), Strings.Get("bot.confirm.hibernate.question"), "m:pwr"),
+            _ => new(Strings.Get("bot.confirm.generic.toast"), Strings.Get("bot.confirm.generic.question"), "m:pwr"),
+        };
+    }
 
     private async Task RunConfirmedAsync(string callbackId, long chatId, long messageId, string action, CancellationToken ct)
     {
+        if (IsSettingsConfirm(action))
+        {
+            // Re-checked rather than trusted: the confirm screen may have been rendered
+            // before the desktop switched remote settings off, and its Yes button is
+            // still live in the chat.
+            if (!await AllowSettingsWriteAsync(callbackId, ct).ConfigureAwait(false))
+                return;
+            await RunConfirmedSettingAsync(callbackId, chatId, messageId, action, ct).ConfigureAwait(false);
+            return;
+        }
+
         try
         {
             string result;
@@ -299,6 +469,15 @@ public sealed class CommandRouter
 
     private async Task AskForValueAsync(string callbackId, long chatId, string value, CancellationToken ct)
     {
+        // "rn.<chatId>" is the one prompt aimed at something: the answer arrives as an
+        // ordinary message with no payload, so the target rides on the prompt itself.
+        string? arg = null;
+        if (value.StartsWith("rn.", StringComparison.Ordinal))
+        {
+            arg = value[3..];
+            value = "rn";
+        }
+
         var kind = value switch
         {
             "vol" => PromptKind.Volume,
@@ -310,6 +489,11 @@ public sealed class CommandRouter
             "cmd" => PromptKind.ShellCommand,
             "path" => PromptKind.Path,
             "get" => PromptKind.GetFile,
+            "poll" => PromptKind.PollTimeout,
+            "logd" => PromptKind.LogRetention,
+            "dlf" => PromptKind.DownloadFolder,
+            "bri" => PromptKind.Brightness,
+            "rn" => PromptKind.RenameChat,
             _ => PromptKind.None,
         };
         if (kind == PromptKind.None)
@@ -317,6 +501,9 @@ public sealed class CommandRouter
             await _telegram.AnswerCallbackAsync(callbackId, null, false, ct).ConfigureAwait(false);
             return;
         }
+        if (ChatPrompts.IsSettingsPrompt(kind)
+            && !await AllowSettingsWriteAsync(callbackId, ct).ConfigureAwait(false))
+            return;
         if (kind == PromptKind.ShellCommand && !_settings.Current.AllowShellCommands)
         {
             await _telegram.AnswerCallbackAsync(callbackId, Strings.Get("bot.shell.offtoast"), true, ct).ConfigureAwait(false);
@@ -334,7 +521,7 @@ public sealed class CommandRouter
         }
 
         await _telegram.AnswerCallbackAsync(callbackId, null, false, ct).ConfigureAwait(false);
-        await AskInChatAsync(chatId, kind, ct).ConfigureAwait(false);
+        await AskInChatAsync(chatId, kind, ct, arg).ConfigureAwait(false);
     }
 
     private async Task RunActionAsync(string callbackId, long chatId, string value, CancellationToken ct)
@@ -419,6 +606,296 @@ public sealed class CommandRouter
         await _telegram.SendWithMarkupAsync(chatId, Strings.Get("bot.language.changed"), BotMenu.ShortcutBar(), ct)
             .ConfigureAwait(false);
         await ShowScreenAsync(chatId, messageId, "home", ct).ConfigureAwait(false);
+    }
+
+    // ============================================================
+    // Settings
+    // ============================================================
+
+    /// <summary>
+    /// Answers the tap and returns false when the desktop app has made settings
+    /// read-only from Telegram. Called on every write path — including the ones that
+    /// only became reachable through a panel rendered while writing was still
+    /// allowed, since a button in a chat outlives the state it was drawn from.
+    /// </summary>
+    private async Task<bool> AllowSettingsWriteAsync(string callbackId, CancellationToken ct)
+    {
+        if (CanWriteSettings)
+            return true;
+        await _telegram.AnswerCallbackAsync(callbackId, Strings.Get("bot.set.readonly.toast"), true, ct)
+            .ConfigureAwait(false);
+        return false;
+    }
+
+    /// <summary>The same for the message path: the refusal to await, or null when writing is allowed.</summary>
+    private Task? RequireSettingsWrite(long chatId, CancellationToken ct)
+        => CanWriteSettings ? null : SendTextAsync(chatId, Strings.Get("bot.set.readonly"), ct);
+
+    /// <summary>
+    /// Clone, mutate, save. Throws when the write did not reach disk so the caller's
+    /// catch reports it: a toggle that only moved on screen is a lie, and the next
+    /// render would quietly put it back.
+    /// </summary>
+    private string ApplySetting(Action<AppSettings> mutate, string resultKey, params object?[] args)
+    {
+        // Cloned because the poll thread reads the live instance.
+        var settings = _settings.Current.Clone();
+        mutate(settings);
+        if (!_settings.Save(settings))
+            throw new InvalidOperationException(Strings.Get("bot.set.savefailed"));
+        return args.Length == 0 ? Strings.Get(resultKey) : Strings.Format(resultKey, args);
+    }
+
+    private async Task RunSettingsActionAsync(
+        string callbackId, long chatId, long messageId, string value, CancellationToken ct)
+    {
+        if (!await AllowSettingsWriteAsync(callbackId, ct).ConfigureAwait(false))
+            return;
+
+        var (op, arg) = SplitOn(value, '.');
+        string result;
+        string screen;
+        try
+        {
+            switch (op)
+            {
+                case "t":
+                    (result, screen) = ToggleSetting(arg);
+                    break;
+                case "dlf":
+                    result = ApplySetting(s => s.DownloadFolder = string.Empty, "act.set.folderdefault");
+                    screen = "sbot";
+                    break;
+                case "pln":
+                    result = await SetPowerPlanAsync(arg, ct).ConfigureAwait(false);
+                    screen = "spln";
+                    break;
+                case "bri":
+                    result = SetBrightness(arg);
+                    screen = "sbri";
+                    break;
+                case "bt":
+                    result = await SetBluetoothAsync(arg == "1", ct).ConfigureAwait(false);
+                    screen = "sblu";
+                    break;
+                case "wfc":
+                    result = await ConnectWifiAsync(chatId, arg, ct).ConfigureAwait(false);
+                    screen = "swif";
+                    break;
+                default:
+                    await _telegram.AnswerCallbackAsync(callbackId, null, false, ct).ConfigureAwait(false);
+                    return;
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            await _telegram.AnswerCallbackAsync(callbackId, ex.Message, true, ct).ConfigureAwait(false);
+            return;
+        }
+
+        await _telegram.AnswerCallbackAsync(callbackId, result, false, ct).ConfigureAwait(false);
+        // Re-rendered so the marks match what was just saved. Tapping the state a
+        // screen is already in is not an error: EditMessageAsync absorbs Telegram's
+        // "message is not modified" rather than sending a duplicate panel.
+        await ShowScreenAsync(chatId, messageId, screen, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The low-risk booleans. The payload carries the state to set, not "the other
+    /// one", so a stale panel tapped twice lands where its caption promised.
+    /// </summary>
+    private (string Result, string Screen) ToggleSetting(string arg)
+    {
+        var (key, state) = SplitOn(arg, '.');
+        var on = state == "1";
+        return key switch
+        {
+            "swin" => (SetStartWithWindows(on), "sst"),
+            "asb" => (ApplySetting(s => s.AutoStartBot = on, on ? "act.set.on" : "act.set.off",
+                          Strings.Get("bot.set.startup.autobot")), "sst"),
+            "smin" => (ApplySetting(s => s.StartMinimized = on, on ? "act.set.on" : "act.set.off",
+                           Strings.Get("bot.set.startup.startmin")), "sst"),
+            "noti" => (ApplySetting(s => s.NotifyOnStartup = on, on ? "act.set.on" : "act.set.off",
+                           Strings.Get("bot.set.startup.notify")), "sst"),
+
+            // The two update switches are coupled the same way the desktop couples
+            // them: nothing may install unattended while nothing is checking, because
+            // a screen showing both on would be saying something untrue.
+            "auc" => (ApplySetting(s =>
+                      {
+                          s.AutoCheckUpdates = on;
+                          if (!on) s.AutoInstallUpdates = false;
+                      }, on ? "act.set.on" : "act.set.off", Strings.Get("bot.set.pref.autocheck")), "sbot"),
+            "aui" => (ApplySetting(s =>
+                      {
+                          s.AutoInstallUpdates = on;
+                          if (on) s.AutoCheckUpdates = true;
+                      }, on ? "act.set.on" : "act.set.off", Strings.Get("bot.set.pref.autoinstall")), "sbot"),
+
+            _ => (Strings.Get("bot.nothing"), "set"),
+        };
+    }
+
+    /// <summary>
+    /// Start-with-Windows is a registry entry as well as a stored flag. Both have to
+    /// agree, so a save that fails puts the registry back rather than leaving the
+    /// machine launching an app whose settings say it should not.
+    /// </summary>
+    private string SetStartWithWindows(bool on)
+    {
+        if (_startup is null)
+            throw new InvalidOperationException(Strings.Get("bot.set.startup.unmanaged"));
+
+        _startup.SetEnabled(on);
+        try
+        {
+            return ApplySetting(s => s.StartWithWindows = on, on ? "act.set.on" : "act.set.off",
+                Strings.Get("bot.set.startup.startwin"));
+        }
+        catch
+        {
+            _startup.SetEnabled(!on);
+            throw;
+        }
+    }
+
+    private async Task<string> SetPowerPlanAsync(string id, CancellationToken ct)
+    {
+        RequirePcSettings();
+        // Validated before it reaches a command line: this value came off a button
+        // payload, and a power plan is a GUID or it is nothing.
+        if (!Guid.TryParse(id, out _))
+            throw new InvalidOperationException(Strings.Get("act.plan.unknown"));
+        return await _pc!.SetPowerPlanAsync(id, ct).ConfigureAwait(false);
+    }
+
+    private string SetBrightness(string arg)
+    {
+        RequirePcSettings();
+        if (!int.TryParse(arg, NumberStyles.Integer, CultureInfo.InvariantCulture, out var percent))
+            throw new InvalidOperationException(Strings.Get("bot.prompt.notanumber"));
+        return _pc!.SetBrightness(percent);
+    }
+
+    private async Task<string> SetBluetoothAsync(bool on, CancellationToken ct)
+    {
+        RequirePcSettings();
+        return await _pc!.SetBluetoothAsync(on, ct).ConfigureAwait(false);
+    }
+
+    private async Task<string> ConnectWifiAsync(long chatId, string arg, CancellationToken ct)
+    {
+        RequirePcSettings();
+        if (!int.TryParse(arg, NumberStyles.Integer, CultureInfo.InvariantCulture, out var index))
+            throw new InvalidOperationException(Strings.Get("bot.set.stale"));
+
+        // The profile name itself is too long for a payload, so the button carried an
+        // index into the list this chat was last shown. A panel that outlived the list
+        // says so rather than connecting to whatever now sits at that position.
+        var profile = _wifiList.Get(chatId, index)
+                      ?? throw new InvalidOperationException(Strings.Get("bot.set.stale"));
+        return await _pc!.ConnectWifiAsync(profile, ct).ConfigureAwait(false);
+    }
+
+    private void RequirePcSettings()
+    {
+        if (_pc is null)
+            throw new InvalidOperationException(Strings.Get("bot.set.win.unavailable"));
+    }
+
+    /// <summary>The confirmed half of a settings change: permissions, revoke, Wi-Fi off.</summary>
+    private async Task RunConfirmedSettingAsync(
+        string callbackId, long chatId, long messageId, string action, CancellationToken ct)
+    {
+        string result;
+        string screen;
+        try
+        {
+            if (action.StartsWith("p.", StringComparison.Ordinal))
+            {
+                var parts = action.Split('.');
+                var on = parts.Length > 2 && parts[2] == "1";
+                result = parts[1] switch
+                {
+                    "shell" => ApplySetting(s => s.AllowShellCommands = on, on ? "act.set.on" : "act.set.off",
+                                   Strings.Get("bot.set.perm.shell")),
+                    "file" => ApplySetting(s => s.AllowFileAccess = on, on ? "act.set.on" : "act.set.off",
+                                  Strings.Get("bot.set.perm.files")),
+                    "inp" => ApplySetting(s => s.AllowInputInjection = on, on ? "act.set.on" : "act.set.off",
+                                 Strings.Get("bot.set.perm.typing")),
+                    _ => Strings.Get("bot.nothing"),
+                };
+                screen = "sper";
+            }
+            else if (action.StartsWith("cr.", StringComparison.Ordinal))
+            {
+                result = RevokeChat(action[3..]);
+                screen = "scht";
+            }
+            else if (action == "wd")
+            {
+                RequirePcSettings();
+                result = await _pc!.DisconnectWifiAsync(ct).ConfigureAwait(false);
+                screen = "swif";
+            }
+            else
+            {
+                await _telegram.AnswerCallbackAsync(callbackId, null, false, ct).ConfigureAwait(false);
+                return;
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            await _telegram.AnswerCallbackAsync(callbackId, ex.Message, true, ct).ConfigureAwait(false);
+            return;
+        }
+
+        await _telegram.AnswerCallbackAsync(callbackId, result, false, ct).ConfigureAwait(false);
+        await ShowScreenAsync(chatId, messageId, screen, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Takes a chat off the whitelist, doing what the desktop's Revoke does: save,
+    /// then drop everything the router still holds for it. Revoking the last one is
+    /// refused — it would leave the PC with no way in short of the desktop app.
+    /// </summary>
+    private string RevokeChat(string raw)
+    {
+        if (!long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var target)
+            || !_settings.Current.AuthorizedChatIds.Contains(target))
+            throw new InvalidOperationException(Strings.Get("bot.set.chat.gone"));
+        if (_settings.Current.AuthorizedChatIds.Count <= 1)
+            throw new InvalidOperationException(Strings.Get("bot.set.chat.lastone"));
+
+        var name = _settings.Current.NameFor(target);
+        // Normalize() drops the orphaned display name on save, so it is not removed here.
+        var result = ApplySetting(s => s.AuthorizedChatIds.Remove(target), "bot.set.chat.revoked", name);
+        Forget(target);
+        _log.Info($"Chat {target} revoked from Telegram.");
+        return result;
+    }
+
+    private string RenameChat(string raw, string name)
+    {
+        if (!long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var target)
+            || !_settings.Current.AuthorizedChatIds.Contains(target))
+            throw new InvalidOperationException(Strings.Get("bot.set.chat.gone"));
+
+        var trimmed = TextUtil.Clip(name.Trim(), 48);
+        if (trimmed.Length == 0)
+            throw new InvalidOperationException(Strings.Get("bot.set.chat.badname"));
+
+        var key = target.ToString(CultureInfo.InvariantCulture);
+        return ApplySetting(s => s.ChatNames[key] = trimmed, "bot.set.chat.renamed", trimmed);
+    }
+
+    /// <summary>Splits "a.b.c" into ("a", "b.c"), or ("a", "") when there is no separator.</summary>
+    private static (string Head, string Tail) SplitOn(string value, char separator)
+    {
+        var idx = value.IndexOf(separator);
+        return idx < 0 ? (value, string.Empty) : (value[..idx], value[(idx + 1)..]);
     }
 
     // ============================================================
@@ -610,10 +1087,10 @@ public sealed class CommandRouter
         // A pending prompt claims the next plain message.
         if (!raw.StartsWith('/') && _prompts.HasPending(chatId))
         {
-            var kind = _prompts.Take(chatId);
+            var kind = _prompts.Take(chatId, out var promptArg);
             if (kind != PromptKind.None)
             {
-                await FulfilPromptAsync(chatId, kind, raw, ct).ConfigureAwait(false);
+                await FulfilPromptAsync(chatId, kind, raw, promptArg, ct).ConfigureAwait(false);
                 return;
             }
         }
@@ -645,9 +1122,73 @@ public sealed class CommandRouter
         return null;
     }
 
-    private async Task FulfilPromptAsync(long chatId, PromptKind kind, string input, CancellationToken ct)
+    private async Task FulfilPromptAsync(long chatId, PromptKind kind, string input, string? arg, CancellationToken ct)
     {
         Count("prompt:" + kind);
+
+        // A prompt stays open for three minutes, which is long enough for the desktop
+        // to switch remote settings off while one is waiting for an answer.
+        if (ChatPrompts.IsSettingsPrompt(kind) && RequireSettingsWrite(chatId, ct) is { } refusedSetting)
+        {
+            await refusedSetting.ConfigureAwait(false);
+            return;
+        }
+
+        switch (kind)
+        {
+            case PromptKind.PollTimeout:
+                // Normalize() clamps to 5-50 on save, so the value is handed over raw
+                // rather than clamped twice in two places that could disagree.
+                await SendResultAsync(chatId, () =>
+                {
+                    if (!int.TryParse(input.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds))
+                        throw new InvalidOperationException(Strings.Get("bot.prompt.notawholenumber"));
+                    var applied = Math.Clamp(seconds, 5, 50);
+                    return ApplySetting(s => s.PollTimeoutSeconds = applied, "act.set.poll", applied);
+                }, ct).ConfigureAwait(false);
+                return;
+
+            case PromptKind.LogRetention:
+                await SendResultAsync(chatId, () =>
+                {
+                    if (!int.TryParse(input.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var days))
+                        throw new InvalidOperationException(Strings.Get("bot.prompt.notawholenumber"));
+                    var applied = Math.Clamp(days, 0, 365);
+                    return applied == 0
+                        ? ApplySetting(s => s.LogRetentionDays = 0, "act.set.logforever")
+                        : ApplySetting(s => s.LogRetentionDays = applied, "act.set.logdays", applied);
+                }, ct).ConfigureAwait(false);
+                return;
+
+            case PromptKind.DownloadFolder:
+                await SendResultAsync(chatId, () =>
+                {
+                    var path = input.Trim();
+                    // Checked before it is stored: a folder that is not there would only
+                    // fail later, on the first file someone sent, with nothing to explain it.
+                    if (!System.IO.Directory.Exists(path))
+                        throw new InvalidOperationException(Strings.Get("act.set.foldermissing"));
+                    // Not escaped here: SendResultAsync escapes whatever it is handed.
+                    return ApplySetting(s => s.DownloadFolder = path, "act.set.folder", path);
+                }, ct).ConfigureAwait(false);
+                return;
+
+            case PromptKind.Brightness:
+                await SendResultAsync(chatId, () =>
+                {
+                    RequirePcSettings();
+                    if (!int.TryParse(input.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var percent))
+                        throw new InvalidOperationException(Strings.Get("bot.prompt.notanumber"));
+                    return _pc!.SetBrightness(percent);
+                }, ct).ConfigureAwait(false);
+                return;
+
+            case PromptKind.RenameChat:
+                await SendResultAsync(chatId, () => RenameChat(arg ?? string.Empty, input), ct)
+                    .ConfigureAwait(false);
+                return;
+        }
+
         switch (kind)
         {
             case PromptKind.Volume:
@@ -826,6 +1367,12 @@ public sealed class CommandRouter
             case "language":
                 await SetLanguageFromCommandAsync(chatId, arg, ct).ConfigureAwait(false);
                 break;
+            case "settings":
+            case "set":
+                // Never guarded: reading how your own PC is configured is not a write,
+                // and the read-only panel is what explains why nothing is tappable.
+                await ShowScreenAsync(chatId, 0, "set", ct).ConfigureAwait(false);
+                break;
             case "whoami":
                 await SendTextAsync(chatId, Strings.Format("bot.chatid", chatId), ct).ConfigureAwait(false);
                 break;
@@ -949,9 +1496,9 @@ public sealed class CommandRouter
     /// private-chat only, a force-reply's pre-aimed composer buys little compared with
     /// a visible way to back out.
     /// </summary>
-    private async Task AskInChatAsync(long chatId, PromptKind kind, CancellationToken ct)
+    private async Task AskInChatAsync(long chatId, PromptKind kind, CancellationToken ct, string? arg = null)
     {
-        _prompts.Ask(chatId, kind);
+        _prompts.Ask(chatId, kind, arg);
         var text = ChatPrompts.PromptFor(kind)
                    + $"\n<i>{TextUtil.Html(ChatPrompts.PlaceholderFor(kind))}</i>";
         await _telegram.SendMessageAsync(chatId, text, BotMenu.CancelPrompt(), ct).ConfigureAwait(false);
@@ -1152,6 +1699,7 @@ public sealed class CommandRouter
     {
         _prompts.Clear(chatId);
         _files.Forget(chatId);
+        _wifiList.Forget(chatId);
         _commandLimit.Forget(chatId);
         _strangerLimit.Forget(chatId);
     }

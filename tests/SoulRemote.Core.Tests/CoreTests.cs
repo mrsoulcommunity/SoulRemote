@@ -331,6 +331,52 @@ public sealed class BotMenuTests
         yield return BotMenu.Files(true);
         yield return BotMenu.Files(false);
         yield return BotMenu.Confirm("sd", "Shut down?");
+        yield return BotMenu.Confirm("p.shell.1", "Run commands?", "m:sper");
+
+        // The settings screens, each in both states, so the read-only rendering is
+        // swept for over-long payloads and untranslated captions too.
+        foreach (var writable in new[] { true, false })
+        {
+            var settings = new AppSettings
+            {
+                AuthorizedChatIds = { 1001, -1009876543210987 },
+                ChatNames = { ["1001"] = "Sara's phone" },
+                DownloadFolder = @"C:\Users\sara\Downloads",
+                LogRetentionDays = 14,
+            };
+            yield return BotMenu.Settings(writable);
+            yield return BotMenu.Permissions(settings, writable);
+            yield return BotMenu.Startup(settings, writable, startupManaged: true);
+            yield return BotMenu.Startup(settings, writable, startupManaged: false);
+            yield return BotMenu.BotPrefs(settings, writable);
+            yield return BotMenu.BotPrefs(new AppSettings { LogRetentionDays = 0 }, writable);
+            yield return BotMenu.Chats(settings, 1001, writable);
+            yield return BotMenu.Chats(new AppSettings(), 1001, writable);
+            yield return BotMenu.Chat(-1009876543210987, "A group", isViewer: false, writable);
+            yield return BotMenu.Chat(1001, "Sara's phone", isViewer: true, writable);
+
+            yield return BotMenu.PowerPlans(new[]
+            {
+                new PowerPlan("381b4222-f694-41f0-9685-ff5bb260df2e", "Balanced", true),
+                new PowerPlan("a1841308-3541-4fab-bc81-f71556f20b4a", "Power saver", false),
+            }, writable);
+            yield return BotMenu.PowerPlans(Array.Empty<PowerPlan>(), writable);
+            yield return BotMenu.Brightness(new BrightnessState(true, 60), writable);
+            yield return BotMenu.Brightness(new BrightnessState(false, null), writable);
+            // A 32-character non-ASCII SSID is the payload the 64-byte limit is really
+            // about: as a literal it would be 128 bytes, which is why it is indexed.
+            yield return BotMenu.Wifi(new WifiState(true, true, "HomeNet"),
+                new[] { "HomeNet", new string('\u06cc', 32) }, writable);
+            yield return BotMenu.Wifi(new WifiState(true, false, null), Array.Empty<string>(), writable);
+            yield return BotMenu.Wifi(new WifiState(false, false, null), Array.Empty<string>(), writable);
+            yield return BotMenu.Bluetooth(RadioPower.On, writable);
+            yield return BotMenu.Bluetooth(RadioPower.Off, writable);
+            yield return BotMenu.Bluetooth(RadioPower.Unavailable, writable);
+        }
+
+        yield return BotMenu.WindowsSettings(available: true);
+        yield return BotMenu.WindowsSettings(available: false);
+        yield return BotMenu.Unavailable("Something went wrong.", "m:swin");
     }
 }
 

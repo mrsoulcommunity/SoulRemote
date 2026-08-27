@@ -30,6 +30,10 @@ public sealed class DashboardViewModel : ViewModelBase
 
         _services.Bot.StateChanged += OnBotStateChanged;
         _services.Router.ChatAuthorized += OnChatAuthorized;
+        // A chat can now be renamed or revoked from Telegram, so this list has another
+        // writer. Refresh() only ran on navigation and bot-state changes, which left
+        // the rows showing a chat that had already lost access.
+        _services.Settings.Changed += _ => UiThread.Post(Refresh);
         _services.Router.CommandHandled += OnCommandHandled;
 
         // Uptime is the one tile that should visibly move. It was only recomputed on a

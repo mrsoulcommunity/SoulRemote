@@ -24,15 +24,34 @@ public sealed class CommandRouterTests
         public FakeScreenshots Screenshots { get; } = new();
         public FakeInfo Info { get; } = new();
         public FakeLog Log { get; } = new();
+        public FakePcSettings Pc { get; } = new();
+        public FakeStartup Startup { get; } = new();
         public CommandRouter Router { get; }
 
-        public Harness(Action<AppSettings>? configure = null)
+        /// <param name="headless">
+        /// Builds the router without a Windows half, the way the core alone would run.
+        /// </param>
+        public Harness(Action<AppSettings>? configure = null, bool headless = false)
         {
             var settings = new AppSettings { AuthorizedChatIds = { Owner } };
             configure?.Invoke(settings);
             Settings = new FakeSettings(settings);
-            Router = new CommandRouter(Settings, Telegram, System, Screenshots, Info, Log, Clock);
+            Router = new CommandRouter(Settings, Telegram, System, Screenshots, Info, Log, Clock,
+                pc: headless ? null : Pc,
+                startup: headless ? null : Startup);
         }
+
+        /// <summary>
+        /// The callback payloads on whichever panel was put in the chat last. Payloads
+        /// rather than captions: they are protocol, so an assertion on them does not
+        /// break the first time a caption is reworded.
+        /// </summary>
+        public IReadOnlyList<string> Panel =>
+            Telegram.Edits.Count > 0 ? Telegram.Edits[^1].Payloads : Telegram.Messages[^1].Payloads;
+
+        /// <summary>The text of the last panel, for the times the words are the point.</summary>
+        public string PanelText =>
+            Telegram.Edits.Count > 0 ? Telegram.Edits[^1].Text : Telegram.Messages[^1].Text;
 
         public Task Text(long chatId, string text, string chatType = "private") =>
             Router.HandleUpdateAsync(new TgUpdate

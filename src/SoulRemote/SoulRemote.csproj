@@ -1,8 +1,16 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!--
+      Windows 10 2004 (10.0.19041) rather than a bare net8.0-windows, so the app can
+      use the WinRT projections in the Windows SDK. Bluetooth is the reason: turning a
+      radio on and off has no Win32 API, only Windows.Devices.Radios, and that is only
+      reachable through a version-pinned TFM. The floor this sets - Windows 10 2004,
+      released May 2020 - is below what Windows Update still services.
+    -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
@@ -55,6 +63,9 @@
     <!-- DPAPI (ProtectedData) ships as a Microsoft first-party package on .NET; it is not
          part of the shared framework, so it must be referenced explicitly. -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <!-- WMI, which is how the panel brightness is read and written. Like DPAPI above,
+         it is a first-party package rather than part of the shared framework. -->
+    <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>

@@ -41,6 +41,58 @@ public interface ISystemControlService
     Task<string> SpeakAsync(string text, CancellationToken ct = default);
 }
 
+/// <summary>One Windows power scheme. <paramref name="Id"/> is its GUID.</summary>
+public sealed record PowerPlan(string Id, string Name, bool IsActive);
+
+/// <summary>
+/// What the panel brightness control can currently do. <paramref name="Supported"/>
+/// is false on a machine with no driveable panel — a desktop with only external
+/// monitors — which is a fact to report, not an error.
+/// </summary>
+public sealed record BrightnessState(bool Supported, int? Percent);
+
+/// <summary>
+/// The wireless picture. <paramref name="ConnectedProfile"/> is null when the
+/// adapter is present but not associated, and also when the profile name could not
+/// be read — the name is best-effort, the adapter and connection state are not.
+/// </summary>
+public sealed record WifiState(bool AdapterPresent, bool Connected, string? ConnectedProfile);
+
+/// <summary>A radio's power, or the fact that this machine has none.</summary>
+public enum RadioPower { Unavailable, On, Off }
+
+/// <summary>
+/// Windows' own settings, as opposed to this app's. Split from
+/// <see cref="ISystemControlService"/> because these read and write machine
+/// configuration that outlives the app, rather than performing an action.
+///
+/// Everything here must work without administrator rights: the app runs asInvoker
+/// so it can start silently at sign-in, and an implementation that needs elevation
+/// would simply fail in front of the user. Each method returns a localized success
+/// string and throws <see cref="InvalidOperationException"/> with a localized
+/// message on failure, so the router reports both the same way it already does for
+/// system control.
+/// </summary>
+public interface IPcSettingsService
+{
+    Task<IReadOnlyList<PowerPlan>> GetPowerPlansAsync(CancellationToken ct = default);
+    Task<string> SetPowerPlanAsync(string planId, CancellationToken ct = default);
+
+    BrightnessState GetBrightness();
+    string SetBrightness(int percent);
+
+    Task<WifiState> GetWifiAsync(CancellationToken ct = default);
+
+    /// <summary>The saved network profiles this machine can reconnect to.</summary>
+    Task<IReadOnlyList<string>> GetWifiProfilesAsync(CancellationToken ct = default);
+
+    Task<string> ConnectWifiAsync(string profileName, CancellationToken ct = default);
+    Task<string> DisconnectWifiAsync(CancellationToken ct = default);
+
+    Task<RadioPower> GetBluetoothAsync(CancellationToken ct = default);
+    Task<string> SetBluetoothAsync(bool on, CancellationToken ct = default);
+}
+
 /// <summary>Read-only reports about the machine, rendered as Telegram-ready HTML.</summary>
 public interface ISystemInfoService
 {

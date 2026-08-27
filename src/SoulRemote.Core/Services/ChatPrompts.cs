@@ -21,6 +21,21 @@ public enum PromptKind
 
     /// <summary>A file to fetch from this PC and send to the chat.</summary>
     GetFile,
+
+    /// <summary>Seconds to hold a Telegram long-poll open for.</summary>
+    PollTimeout,
+
+    /// <summary>Days to keep log files before they are swept.</summary>
+    LogRetention,
+
+    /// <summary>Where files sent to the bot are written.</summary>
+    DownloadFolder,
+
+    /// <summary>Panel brightness, 0-100.</summary>
+    Brightness,
+
+    /// <summary>A friendlier label for a paired chat. Carries the chat id as its argument.</summary>
+    RenameChat,
 }
 
 /// <summary>
@@ -32,25 +47,43 @@ public sealed class ChatPrompts
 {
     public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(3);
 
-    private readonly ConcurrentDictionary<long, (PromptKind Kind, DateTime AskedAt)> _pending = new();
+    private readonly ConcurrentDictionary<long, (PromptKind Kind, string? Arg, DateTime AskedAt)> _pending = new();
     private readonly IClock _clock;
 
     public ChatPrompts(IClock? clock = null) => _clock = clock ?? SystemClock.Instance;
 
-    public void Ask(long chatId, PromptKind kind) => _pending[chatId] = (kind, _clock.UtcNow);
+    /// <param name="arg">
+    /// What the answer will be applied to, for the kinds that need a target — the
+    /// chat id being renamed. Carried here rather than in the callback payload of
+    /// the reply, because the answer arrives as an ordinary message with no payload.
+    /// </param>
+    public void Ask(long chatId, PromptKind kind, string? arg = null)
+        => _pending[chatId] = (kind, arg, _clock.UtcNow);
 
     public void Clear(long chatId) => _pending.TryRemove(chatId, out _);
 
     /// <summary>Takes and clears the pending prompt, or None if there is none or it expired.</summary>
-    public PromptKind Take(long chatId)
+    public PromptKind Take(long chatId) => Take(chatId, out _);
+
+    /// <summary>The same, also handing back what the prompt was aimed at.</summary>
+    public PromptKind Take(long chatId, out string? arg)
     {
+        arg = null;
         if (!_pending.TryRemove(chatId, out var entry))
             return PromptKind.None;
-        return _clock.UtcNow - entry.AskedAt > Lifetime ? PromptKind.None : entry.Kind;
+        if (_clock.UtcNow - entry.AskedAt > Lifetime)
+            return PromptKind.None;
+        arg = entry.Arg;
+        return entry.Kind;
     }
 
     public bool HasPending(long chatId) =>
         _pending.TryGetValue(chatId, out var e) && _clock.UtcNow - e.AskedAt <= Lifetime;
+
+    /// <summary>The kinds that write settings, and so answer to the remote-settings switch.</summary>
+    public static bool IsSettingsPrompt(PromptKind kind) => kind
+        is PromptKind.PollTimeout or PromptKind.LogRetention or PromptKind.DownloadFolder
+        or PromptKind.Brightness or PromptKind.RenameChat;
 
     public static string PromptFor(PromptKind kind) => Strings.Get(kind switch
     {
@@ -62,6 +95,11 @@ public sealed class ChatPrompts
         PromptKind.OpenLink => "bot.prompt.open",
         PromptKind.ShellCommand => "bot.prompt.shell",
         PromptKind.Path or PromptKind.GetFile => "bot.prompt.path",
+        PromptKind.PollTimeout => "bot.prompt.poll",
+        PromptKind.LogRetention => "bot.prompt.logdays",
+        PromptKind.DownloadFolder => "bot.prompt.folder",
+        PromptKind.Brightness => "bot.prompt.brightness",
+        PromptKind.RenameChat => "bot.prompt.rename",
         _ => "bot.prompt.generic",
     });
 
@@ -72,6 +110,11 @@ public sealed class ChatPrompts
         PromptKind.OpenLink => "bot.placeholder.open",
         PromptKind.ShellCommand => "bot.placeholder.shell",
         PromptKind.Path or PromptKind.GetFile => "bot.placeholder.path",
+        PromptKind.PollTimeout => "bot.placeholder.poll",
+        PromptKind.LogRetention => "bot.placeholder.logdays",
+        PromptKind.DownloadFolder => "bot.placeholder.folder",
+        PromptKind.Brightness => "bot.placeholder.brightness",
+        PromptKind.RenameChat => "bot.placeholder.rename",
         _ => "bot.placeholder.generic",
     });
 }

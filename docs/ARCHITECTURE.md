@@ -18,16 +18,27 @@ long-polls Telegram *through* that worker and executes commands locally.
 
 The code is split by whether it needs Windows, not by feature:
 
-| | `SoulRemote.Core` (`net8.0`) | `SoulRemote` (`net8.0-windows`) |
+| | `SoulRemote.Core` (`net8.0`) | `SoulRemote` (`net8.0-windows10.0.19041.0`) |
 |---|---|---|
 | Holds | the relay, the bot, settings, logging, the string catalogue | WPF, the tray, and everything that touches Win32 |
 | Knows about Windows | nothing | all of it |
 | Testable | yes, anywhere — `dotnet test` on any OS | compile-checked only |
 
+The desktop half is pinned to the Windows 10 2004 SDK rather than to a bare
+`net8.0-windows`, because a few of the things it does have no Win32 API and exist only
+as WinRT: switching the Bluetooth radio is the one that forced it. That sets the
+minimum OS the app will run on.
+
 The core declares interfaces for the machine-specific half —
 `ISystemControlService`, `ISystemInfoService`, `IScreenshotService`,
-`IStartupManager`, plus `IUiDispatcher`, `ISecretProtector` and `IClock` — and the
-desktop app implements them. `AppServices` is where the two meet.
+`IStartupManager`, `IPcSettingsService`, plus `IUiDispatcher`, `ISecretProtector` and
+`IClock` — and the desktop app implements them. `AppServices` is where the two meet.
+
+`IPcSettingsService` is the newest of them and the odd one out: where
+`ISystemControlService` performs an action, this reads and writes Windows' own
+configuration — power plan, panel brightness, Wi-Fi, the Bluetooth radio. Its
+implementation is shaped entirely by the app running `asInvoker`, so everything it
+does has to work without administrator rights.
 
 That seam is why `CommandRouter`, `TelegramClient`, `SettingsService` and the rest
 can be tested at all: `tests/SoulRemote.Core.Tests` drives them with fakes and a
